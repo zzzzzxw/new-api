@@ -16,14 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
-import { useSystemConfig } from '@/hooks/use-system-config'
+
+import { ErrorState } from '@/components/error-state'
+import { LanguageSwitcher } from '@/components/language-switcher'
+import { LoadingState } from '@/components/loading-state'
 import {
   Card,
   CardContent,
@@ -34,9 +36,11 @@ import {
 } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ErrorState } from '@/components/error-state'
-import { LanguageSwitcher } from '@/components/language-switcher'
-import { LoadingState } from '@/components/loading-state'
+import { BackupRestoreSection } from '@/features/system-settings/maintenance/backup-restore-section'
+import type { SystemBackupImportSummary } from '@/features/system-settings/types'
+import { useSystemConfig } from '@/hooks/use-system-config'
+import { cn } from '@/lib/utils'
+
 import { buildSetupPayload, getSetupStatus, submitSetup } from './api'
 import { AdminStep } from './components/admin-step'
 import { CompleteStep } from './components/complete-step'
@@ -276,6 +280,55 @@ export function SetupWizard() {
     mutation.mutate(payload)
   }
 
+  const handleBackupImportSuccess = async (
+    _summary: SystemBackupImportSummary
+  ) => {
+    await queryClient.invalidateQueries({ queryKey: ['setup-status'] })
+    const latest = await refetch()
+    if (latest.data?.data?.status) {
+      setTimeout(() => {
+        navigate({ to: '/' })
+      }, 800)
+    }
+  }
+
+  const getStepItemClassName = (isActive: boolean, isCompleted: boolean) => {
+    if (isActive) return 'border-primary ring-primary/20 ring-2'
+    if (isCompleted) return 'border-primary/40 bg-primary/5'
+    return 'border-muted bg-card'
+  }
+
+  const getStepNumberClassName = (isActive: boolean, isCompleted: boolean) => {
+    if (isActive || isCompleted) {
+      return 'border-primary bg-primary text-primary-foreground'
+    }
+    return 'border-muted-foreground/40 text-muted-foreground'
+  }
+
+  const renderSetupContent = () => {
+    if (isLoading) {
+      return <LoadingState message={t('Loading setup status…')} />
+    }
+    if (isError) {
+      return (
+        <ErrorState
+          title={t('We could not load the setup status.')}
+          onRetry={() => refetch()}
+        />
+      )
+    }
+    return (
+      <Form {...form}>
+        <form
+          className='space-y-6'
+          onSubmit={(event) => event.preventDefault()}
+        >
+          {currentStepComponent}
+        </form>
+      </Form>
+    )
+  }
+
   return (
     <div className='bg-muted/40 relative min-h-svh py-10'>
       <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
@@ -308,6 +361,27 @@ export function SetupWizard() {
           </p>
         </div>
 
+        <Card>
+          <CardHeader className='space-y-2'>
+            <CardTitle className='text-xl font-semibold'>
+              {t('Restore from backup')}
+            </CardTitle>
+            <CardDescription>
+              {t(
+                'Import an existing backup instead of creating a new installation.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BackupRestoreSection
+              compact
+              showExport={false}
+              importEndpoint='/api/setup/import'
+              onImportSuccess={handleBackupImportSuccess}
+            />
+          </CardContent>
+        </Card>
+
         <Card className='shadow-lg'>
           <CardHeader className='space-y-2'>
             <CardTitle className='text-xl font-semibold'>
@@ -328,22 +402,14 @@ export function SetupWizard() {
                     key={step.titleKey}
                     className={cn(
                       'rounded-xl border p-3',
-                      isActive
-                        ? 'border-primary ring-primary/20 ring-2'
-                        : isCompleted
-                          ? 'border-primary/40 bg-primary/5'
-                          : 'border-muted bg-card'
+                      getStepItemClassName(isActive, isCompleted)
                     )}
                   >
                     <div className='flex items-start gap-3'>
                       <span
                         className={cn(
                           'flex size-6 items-center justify-center rounded-md border text-xs font-semibold',
-                          isActive
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : isCompleted
-                              ? 'border-primary bg-primary text-primary-foreground'
-                              : 'border-muted-foreground/40 text-muted-foreground'
+                          getStepNumberClassName(isActive, isCompleted)
                         )}
                       >
                         {index + 1}
@@ -362,23 +428,7 @@ export function SetupWizard() {
               })}
             </ol>
 
-            {isLoading ? (
-              <LoadingState message={t('Loading setup status…')} />
-            ) : isError ? (
-              <ErrorState
-                title={t('We could not load the setup status.')}
-                onRetry={() => refetch()}
-              />
-            ) : (
-              <Form {...form}>
-                <form
-                  className='space-y-6'
-                  onSubmit={(event) => event.preventDefault()}
-                >
-                  {currentStepComponent}
-                </form>
-              </Form>
-            )}
+            {renderSetupContent()}
           </CardContent>
 
           {!isLoading && !isError && (

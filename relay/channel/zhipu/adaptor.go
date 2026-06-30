@@ -52,7 +52,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
-	token := getZhipuToken(info.ApiKey)
+	token := getZhipuToken(ResolveAPIKey(info.ApiKey))
 	req.Set("Authorization", token)
 	return nil
 }

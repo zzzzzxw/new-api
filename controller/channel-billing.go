@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	zhipucommon "github.com/QuantumNous/new-api/relay/channel/zhipu"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -119,6 +123,11 @@ type OpenRouterCreditResponse struct {
 		TotalCredits float64 `json:"total_credits"`
 		TotalUsage   float64 `json:"total_usage"`
 	} `json:"data"`
+}
+
+type zhipuDashboardMetric struct {
+	Value float64
+	Found bool
 }
 
 // GetAuthHeader get auth header
@@ -322,6 +331,214 @@ func updateChannelOpenRouterBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
+func getZhipuDashboardAuthHeader(channel *model.Channel) (http.Header, error) {
+	credential := zhipucommon.ParseDashboardCredential(channel.Key)
+	apiKey := strings.TrimSpace(credential.APIKey)
+	authorization := strings.TrimSpace(credential.Authorization)
+
+	if authorization == "" {
+		if apiKey == "" {
+			return nil, errors.New("zhipu api key is required")
+		}
+		if strings.Count(apiKey, ".") == 1 && !strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+			authorization = zhipucommon.GetZhipuToken(apiKey)
+		} else if strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+			authorization = apiKey
+		} else {
+			authorization = "Bearer " + apiKey
+		}
+	}
+	if authorization == "" {
+		return nil, errors.New("failed to build zhipu authorization")
+	}
+
+	headers := http.Header{}
+	headers.Set("Authorization", authorization)
+	headers.Set("Accept", "application/json, text/plain, */*")
+	if credential.Organization != "" {
+		headers.Set("Bigmodel-Organization", credential.Organization)
+	}
+	if credential.Project != "" {
+		headers.Set("Bigmodel-Project", credential.Project)
+	}
+	return headers, nil
+}
+
+func updateChannelZhipuBalance(channel *model.Channel) (float64, error) {
+	headers, err := getZhipuDashboardAuthHeader(channel)
+	if err != nil {
+		return 0, err
+	}
+
+	now := time.Now()
+	startTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -6)
+	endTime := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	baseURL := "https://www.bigmodel.cn"
+	endpoints := []string{
+		baseURL + "/api/monitor/usage/quota/limit",
+		baseURL + "/api/biz/subscription/list?pageSize=9999&pageNum=1",
+		baseURL + "/api/monitor/usage/model-usage?" + url.Values{
+			"startTime": []string{startTime.Format("2006-01-02 15:04:05")},
+			"endTime":   []string{endTime.Format("2006-01-02 15:04:05")},
+		}.Encode(),
+		baseURL + "/api/monitor/usage/model-performance-day?" + url.Values{
+			"startTime": []string{startTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05")},
+			"endTime":   []string{endTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05")},
+		}.Encode(),
+	}
+
+	best := zhipuDashboardMetric{}
+	var lastErr error
+	for _, endpoint := range endpoints {
+		body, err := GetResponseBody(http.MethodGet, endpoint, channel, headers)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		metric, err := extractZhipuDashboardBalance(body)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if metric.Found && (!best.Found || metric.Value > best.Value) {
+			best = metric
+		}
+	}
+	if !best.Found {
+		if lastErr != nil {
+			return 0, lastErr
+		}
+		return 0, errors.New("zhipu account info response does not include a usable quota or balance field")
+	}
+	channel.UpdateBalance(best.Value)
+	return best.Value, nil
+}
+
+func extractZhipuDashboardBalance(body []byte) (zhipuDashboardMetric, error) {
+	var payload any
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return zhipuDashboardMetric{}, err
+	}
+	return scanZhipuDashboardValue("", payload), nil
+}
+
+func scanZhipuDashboardValue(key string, value any) zhipuDashboardMetric {
+	switch typed := value.(type) {
+	case map[string]any:
+		best := zhipuBalanceFromObject(typed)
+		for childKey, childValue := range typed {
+			child := scanZhipuDashboardValue(childKey, childValue)
+			if child.Found && (!best.Found || child.Value > best.Value) {
+				best = child
+			}
+		}
+		return best
+	case []any:
+		best := zhipuDashboardMetric{}
+		for _, item := range typed {
+			child := scanZhipuDashboardValue(key, item)
+			if child.Found && (!best.Found || child.Value > best.Value) {
+				best = child
+			}
+		}
+		return best
+	default:
+		number, ok := zhipuNumber(value)
+		if ok && zhipuLooksLikeRemainingKey(key) {
+			return zhipuDashboardMetric{Value: number, Found: true}
+		}
+		return zhipuDashboardMetric{}
+	}
+}
+
+func zhipuBalanceFromObject(object map[string]any) zhipuDashboardMetric {
+	remaining := zhipuDashboardMetric{}
+	total := zhipuDashboardMetric{}
+	used := zhipuDashboardMetric{}
+	for key, value := range object {
+		number, ok := zhipuNumber(value)
+		if !ok {
+			continue
+		}
+		lowerKey := strings.ToLower(key)
+		switch {
+		case zhipuLooksLikeRemainingKey(lowerKey):
+			if !remaining.Found || number > remaining.Value {
+				remaining = zhipuDashboardMetric{Value: number, Found: true}
+			}
+		case zhipuLooksLikeTotalKey(lowerKey):
+			if !total.Found || number > total.Value {
+				total = zhipuDashboardMetric{Value: number, Found: true}
+			}
+		case zhipuLooksLikeUsedKey(lowerKey):
+			if !used.Found || number > used.Value {
+				used = zhipuDashboardMetric{Value: number, Found: true}
+			}
+		}
+	}
+	if remaining.Found {
+		return remaining
+	}
+	if total.Found && used.Found && total.Value >= used.Value {
+		return zhipuDashboardMetric{Value: total.Value - used.Value, Found: true}
+	}
+	return zhipuDashboardMetric{}
+}
+
+func zhipuLooksLikeRemainingKey(key string) bool {
+	key = strings.ToLower(key)
+	if strings.Contains(key, "used") || strings.Contains(key, "usage") ||
+		strings.Contains(key, "consume") || strings.Contains(key, "cost") {
+		return false
+	}
+	return strings.Contains(key, "remain") || strings.Contains(key, "remaining") ||
+		strings.Contains(key, "available") || strings.Contains(key, "balance") ||
+		strings.Contains(key, "left") || strings.Contains(key, "surplus") ||
+		strings.Contains(key, "unused")
+}
+
+func zhipuLooksLikeTotalKey(key string) bool {
+	key = strings.ToLower(key)
+	if strings.Contains(key, "used") || strings.Contains(key, "usage") ||
+		strings.Contains(key, "remain") || strings.Contains(key, "available") {
+		return false
+	}
+	return strings.Contains(key, "total") || strings.Contains(key, "limit") ||
+		strings.Contains(key, "quota")
+}
+
+func zhipuLooksLikeUsedKey(key string) bool {
+	key = strings.ToLower(key)
+	return strings.Contains(key, "used") || strings.Contains(key, "usage") ||
+		strings.Contains(key, "consume") || strings.Contains(key, "cost")
+}
+
+func zhipuNumber(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, !math.IsNaN(typed) && !math.IsInf(typed, 0)
+	case float32:
+		number := float64(typed)
+		return number, !math.IsNaN(number) && !math.IsInf(number, 0)
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		number, err := typed.Float64()
+		return number, err == nil
+	case string:
+		cleaned := strings.TrimSpace(strings.ReplaceAll(typed, ",", ""))
+		if cleaned == "" {
+			return 0, false
+		}
+		number, err := strconv.ParseFloat(cleaned, 64)
+		return number, err == nil && !math.IsNaN(number) && !math.IsInf(number, 0)
+	default:
+		return 0, false
+	}
+}
+
 func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 	url := "https://api.moonshot.cn/v1/users/me/balance"
 	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
@@ -386,6 +603,8 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return updateChannelOpenRouterBalance(channel)
 	case constant.ChannelTypeMoonshot:
 		return updateChannelMoonshotBalance(channel)
+	case constant.ChannelTypeZhipu, constant.ChannelTypeZhipu_v4:
+		return updateChannelZhipuBalance(channel)
 	default:
 		return 0, errors.New("尚未实现")
 	}

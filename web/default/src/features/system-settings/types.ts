@@ -39,6 +39,18 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type SystemBackupImportSummary = {
+  imported_tables: number
+  imported_rows: number
+  table_counts: Record<string, number>
+}
+
+export type SystemBackupImportResponse = {
+  success: boolean
+  message: string
+  data?: SystemBackupImportSummary
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string

@@ -21,6 +21,7 @@ func SetApiRouter(router *gin.Engine) {
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
+		apiRouter.POST("/setup/import", controller.ImportSystemBackup)
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
@@ -218,6 +219,12 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.POST("/gc", controller.ForceGC)
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
+		}
+		backupRoute := apiRouter.Group("/backup")
+		backupRoute.Use(middleware.RootAuth())
+		{
+			backupRoute.GET("/export", controller.ExportSystemBackup)
+			backupRoute.POST("/import", controller.ImportSystemBackup)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

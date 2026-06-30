@@ -10,6 +10,17 @@ type testConfigWithMap struct {
 	Name  string            `json:"name"`
 }
 
+type testNestedPolicy struct {
+	Enabled       bool     `json:"enabled"`
+	AllChannels   bool     `json:"all_channels"`
+	ChannelTypes  []int    `json:"channel_types,omitempty"`
+	ModelPatterns []string `json:"model_patterns,omitempty"`
+}
+
+type testConfigWithStruct struct {
+	Policy testNestedPolicy `json:"policy"`
+}
+
 func TestUpdateConfigFromMap_MapReplacement(t *testing.T) {
 	cfg := &testConfigWithMap{
 		Modes: map[string]string{
@@ -70,6 +81,37 @@ func TestUpdateConfigFromMap_EmptyMapClearsAll(t *testing.T) {
 	}
 	if len(cfg.Exprs) != 0 {
 		t.Errorf("Exprs should be empty after updating with {}, got %v", cfg.Exprs)
+	}
+}
+
+func TestUpdateConfigFromMap_EmptyStructClearsAll(t *testing.T) {
+	cfg := &testConfigWithStruct{
+		Policy: testNestedPolicy{
+			Enabled:       true,
+			AllChannels:   false,
+			ChannelTypes:  []int{57},
+			ModelPatterns: []string{"^gpt-5.*$"},
+		},
+	}
+
+	err := UpdateConfigFromMap(cfg, map[string]string{
+		"policy": `{}`,
+	})
+	if err != nil {
+		t.Fatalf("UpdateConfigFromMap failed: %v", err)
+	}
+
+	if cfg.Policy.Enabled {
+		t.Errorf("Policy.Enabled should be false after updating with {}, got true")
+	}
+	if cfg.Policy.AllChannels {
+		t.Errorf("Policy.AllChannels should be false after updating with {}, got true")
+	}
+	if len(cfg.Policy.ChannelTypes) != 0 {
+		t.Errorf("Policy.ChannelTypes should be empty after updating with {}, got %v", cfg.Policy.ChannelTypes)
+	}
+	if len(cfg.Policy.ModelPatterns) != 0 {
+		t.Errorf("Policy.ModelPatterns should be empty after updating with {}, got %v", cfg.Policy.ModelPatterns)
 	}
 }
 

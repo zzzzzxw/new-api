@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   ConfirmPaymentComplianceResponse,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
+  SystemBackupImportResponse,
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
@@ -37,6 +39,29 @@ export async function getSystemOptions() {
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
   const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  return res.data
+}
+
+export async function exportSystemBackup() {
+  const res = await api.get<Blob>('/api/backup/export', {
+    responseType: 'blob',
+    disableDuplicate: true,
+    skipBusinessError: true,
+  })
+  return res
+}
+
+export async function importSystemBackup(
+  file: File,
+  endpoint = '/api/backup/import'
+) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('confirm', 'IMPORT')
+  const res = await api.post<SystemBackupImportResponse>(endpoint, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    skipBusinessError: true,
+  })
   return res.data
 }
 

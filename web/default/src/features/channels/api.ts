@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api, type ApiRequestConfig } from '@/lib/api'
 import { getGroups as getUserGroups } from '@/features/users/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
+
 import type {
   AddChannelRequest,
   BatchDeleteParams,
@@ -53,6 +54,31 @@ export type CodexUsageResponse = {
   upstream_status?: number
   data?: Record<string, unknown>
 }
+
+export type ZhipuUsageSummary = {
+  balance?: number
+  total_quota?: number
+  used_quota?: number
+  subscription_count?: number
+  model_usage_count?: number
+  performance_count?: number
+}
+
+export type ZhipuUsageEndpointResult = {
+  status?: number
+  data?: unknown
+}
+
+export type ZhipuUsageResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    summary?: ZhipuUsageSummary
+    endpoints?: Record<string, ZhipuUsageEndpointResult>
+  }
+}
+
+export type ZhipuUsageRange = 'today' | '7d' | '30d'
 
 export type CodexResetCreditsResponse = CodexUsageResponse
 
@@ -326,6 +352,17 @@ export async function getCodexUsage(
   const res = await api.get(
     `/api/channel/${channelId}/codex/usage`,
     channelActionConfig({ disableDuplicate: true })
+  )
+  return res.data
+}
+
+export async function getZhipuUsage(
+  channelId: number,
+  range: ZhipuUsageRange = '7d'
+): Promise<ZhipuUsageResponse> {
+  const res = await api.get(
+    `/api/channel/${channelId}/zhipu/usage`,
+    channelActionConfig({ disableDuplicate: true, params: { range } })
   )
   return res.data
 }

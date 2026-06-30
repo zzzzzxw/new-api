@@ -30,7 +30,50 @@ import (
 var zhipuTokens sync.Map
 var expSeconds int64 = 24 * 3600
 
-func getZhipuToken(apikey string) string {
+type DashboardCredential struct {
+	APIKey        string `json:"api_key"`
+	APIKeyCamel   string `json:"apiKey"`
+	Key           string `json:"key"`
+	Authorization string `json:"authorization"`
+	Organization  string `json:"organization"`
+	OrgID         string `json:"org_id"`
+	BigmodelOrg   string `json:"bigmodel_organization"`
+	Project       string `json:"project"`
+	ProjectID     string `json:"project_id"`
+	BigmodelProj  string `json:"bigmodel_project"`
+}
+
+func ParseDashboardCredential(raw string) DashboardCredential {
+	raw = strings.TrimSpace(raw)
+	credential := DashboardCredential{APIKey: raw}
+	if !strings.HasPrefix(raw, "{") {
+		return credential
+	}
+	if err := common.Unmarshal([]byte(raw), &credential); err != nil {
+		return DashboardCredential{APIKey: raw}
+	}
+	credential.APIKey = strings.TrimSpace(firstNonEmpty(credential.APIKey, credential.APIKeyCamel, credential.Key))
+	credential.Authorization = strings.TrimSpace(credential.Authorization)
+	credential.Organization = strings.TrimSpace(firstNonEmpty(credential.Organization, credential.OrgID, credential.BigmodelOrg))
+	credential.Project = strings.TrimSpace(firstNonEmpty(credential.Project, credential.ProjectID, credential.BigmodelProj))
+	return credential
+}
+
+func ResolveAPIKey(raw string) string {
+	return ParseDashboardCredential(raw).APIKey
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func GetZhipuToken(apikey string) string {
+	apikey = strings.TrimSpace(apikey)
 	data, ok := zhipuTokens.Load(apikey)
 	if ok {
 		tokenData := data.(zhipuTokenData)
@@ -75,6 +118,10 @@ func getZhipuToken(apikey string) string {
 	})
 
 	return tokenString
+}
+
+func getZhipuToken(apikey string) string {
+	return GetZhipuToken(apikey)
 }
 
 func requestOpenAI2Zhipu(request dto.GeneralOpenAIRequest) *ZhipuRequest {
