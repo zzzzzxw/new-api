@@ -31,6 +31,7 @@ import {
   showError,
   getModelCategories,
   selectFilter,
+  getServerAddress,
 } from '../../../helpers';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
@@ -221,15 +222,7 @@ function TokensPage() {
       return;
     }
 
-    let status = localStorage.getItem('status');
-    let serverAddress = '';
-    if (status) {
-      try {
-        status = JSON.parse(status);
-        serverAddress = status.server_address || '';
-      } catch (_) {}
-    }
-    if (!serverAddress) serverAddress = window.location.origin;
+    const serverAddress = getServerAddress();
 
     let apiKeyToUse = '';
     if (overrideKey) {

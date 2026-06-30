@@ -7,8 +7,16 @@ import { tanstackRouter } from '@tanstack/router-plugin/rspack'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+function normalizeBasePath(value: string | undefined): string {
+  if (!value || value.trim() === '/' || value.trim() === '') return ''
+  return `/${value.trim().replace(/^\/+|\/+$/g, '')}`
+}
+
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
+  const basePath = normalizeBasePath(
+    process.env.VITE_APP_BASE_PATH || env.rawPublicVars.VITE_APP_BASE_PATH
+  )
   const serverUrl =
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
@@ -55,6 +63,14 @@ export default defineConfig(({ envMode }) => {
       entry: {
         index: './src/main.tsx',
       },
+      define: {
+        'import.meta.env.VITE_APP_BASE_PATH': JSON.stringify(basePath),
+        'import.meta.env.VITE_REACT_APP_SERVER_URL': JSON.stringify(
+          process.env.VITE_REACT_APP_SERVER_URL ||
+            env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
+            ''
+        ),
+      },
     },
     resolve: {
       alias: {
@@ -65,6 +81,7 @@ export default defineConfig(({ envMode }) => {
       template: './index.html',
     },
     server: {
+      base: basePath || '/',
       host: '0.0.0.0',
       strictPort: false,
       proxy: devProxy,
@@ -76,6 +93,7 @@ export default defineConfig(({ envMode }) => {
       distPath: {
         root: 'dist',
       },
+      assetPrefix: basePath || '/',
       // Rely on Rsbuild default legalComments ("linked" → per-chunk *.LICENSE.txt) in all modes.
       // Do not set "none" in production: that strips minifier-preserved third-party notices and
       // extracted license files, which some distributions require for open-source compliance.

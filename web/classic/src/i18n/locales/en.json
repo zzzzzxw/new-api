@@ -3826,6 +3826,23 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "备份与恢复": "Backup & Restore",
+    "备份包含敏感数据": "Backup contains sensitive data",
+    "导出的文件包含用户、令牌、渠道、密钥、计费记录和系统设置，请妥善保存。": "The exported file includes users, tokens, channels, keys, billing records, and system settings. Store it securely.",
+    "导出备份": "Export backup",
+    "下载当前主数据库的 JSON 备份文件。": "Download a JSON backup of the current main database.",
+    "导入备份": "Import backup",
+    "恢复备份文件并替换当前数据库数据。": "Restore a backup file and replace the current database data.",
+    "备份已导出": "Backup exported successfully",
+    "备份导出失败": "Failed to export backup",
+    "请先选择备份文件": "Select a backup file first",
+    "备份导入失败": "Failed to import backup",
+    "备份已导入：{{tables}} 张表，共 {{rows}} 行": "Backup imported: {{rows}} rows across {{tables}} tables",
+    "确认导入备份？": "Import backup?",
+    "将导入文件": "File to import",
+    "导入备份会替换当前数据库记录，此操作不可恢复，请提前确认已导出当前数据。": "Importing a backup will replace current database records. This action cannot be undone. Export current data first if needed.",
+    "确认导入": "Confirm import",
+    "已选择": "Selected"
   }
 }
