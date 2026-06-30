@@ -118,7 +118,9 @@ export function AccountBindingsTab({
     const redirectUrl = `${window.location.origin}${withBasePath(
       `/oauth/${provider.id}?bind=true`
     )}`
-    window.location.href = `/api/oauth/${provider.id}?redirect=${encodeURIComponent(redirectUrl)}`
+    window.location.href = withBasePath(
+      `/api/oauth/${provider.id}?redirect=${encodeURIComponent(redirectUrl)}`
+    )
   }
 
   useEffect(() => {

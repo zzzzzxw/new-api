@@ -25,12 +25,25 @@ import {
 } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
-import { withBasePath } from './basePath';
+import { APP_BASE_PATH, withBasePath } from './basePath';
+
+function getApiBaseURL() {
+  const serverURL = import.meta.env.VITE_REACT_APP_SERVER_URL?.trim();
+  if (!serverURL) return APP_BASE_PATH;
+  if (!APP_BASE_PATH) return serverURL;
+
+  const trimmedServerURL = serverURL.replace(/\/+$/, '');
+  if (
+    trimmedServerURL === APP_BASE_PATH ||
+    trimmedServerURL.endsWith(APP_BASE_PATH)
+  ) {
+    return trimmedServerURL;
+  }
+  return `${trimmedServerURL}${APP_BASE_PATH}`;
+}
 
 export let API = axios.create({
-  baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-    ? import.meta.env.VITE_REACT_APP_SERVER_URL
-    : '',
+  baseURL: getApiBaseURL(),
   headers: {
     'New-API-User': getUserIdFromLocalStorage(),
     'Cache-Control': 'no-store',
@@ -81,9 +94,7 @@ patchAPIInstance(API);
 
 export function updateAPI() {
   API = axios.create({
-    baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-      ? import.meta.env.VITE_REACT_APP_SERVER_URL
-      : '',
+    baseURL: getApiBaseURL(),
     headers: {
       'New-API-User': getUserIdFromLocalStorage(),
       'Cache-Control': 'no-store',

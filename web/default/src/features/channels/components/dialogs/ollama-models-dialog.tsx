@@ -22,6 +22,7 @@ import { Loader2, RefreshCw, Trash2, Download, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getCommonHeaders } from '@/lib/api'
+import { withBasePath } from '@/lib/base-path'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -243,7 +244,7 @@ export function OllamaModelsDialog({
     setPullProgress({ status: 'starting', completed: 0, total: 0 })
 
     try {
-      const response = await fetch('/api/channel/ollama/pull/stream', {
+      const response = await fetch(withBasePath('/api/channel/ollama/pull/stream'), {
         method: 'POST',
         credentials: 'include',
         headers: {

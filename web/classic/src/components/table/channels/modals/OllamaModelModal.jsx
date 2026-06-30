@@ -50,6 +50,7 @@ import {
   showError,
   showSuccess,
 } from '../../../../helpers';
+import { withBasePath } from '../../../../helpers/basePath';
 
 const { Text, Title } = Typography;
 
@@ -339,7 +340,7 @@ const OllamaModelModal = ({
         ...authHeaders,
       };
 
-      const response = await fetch('/api/channel/ollama/pull/stream', {
+      const response = await fetch(withBasePath('/api/channel/ollama/pull/stream'), {
         method: 'POST',
         headers: fetchHeaders,
         body: JSON.stringify({

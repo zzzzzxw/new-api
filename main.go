@@ -209,38 +209,10 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	err = http.ListenAndServe(":"+port, withAppBasePath(server))
+	err = http.ListenAndServe(":"+port, server)
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
 	}
-}
-
-func normalizeAppBasePath(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || trimmed == "/" {
-		return ""
-	}
-	return "/" + strings.Trim(trimmed, "/")
-}
-
-func withAppBasePath(handler http.Handler) http.Handler {
-	basePath := normalizeAppBasePath(os.Getenv("VITE_APP_BASE_PATH"))
-	if basePath == "" {
-		return handler
-	}
-	common.SysLog("frontend base path enabled: " + basePath)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == basePath {
-			r.URL.Path = "/"
-			r.URL.RawPath = ""
-		} else if strings.HasPrefix(r.URL.Path, basePath+"/") {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, basePath)
-			if r.URL.RawPath != "" {
-				r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, basePath)
-			}
-		}
-		handler.ServeHTTP(w, r)
-	})
 }
 
 func InjectUmamiAnalytics() {
