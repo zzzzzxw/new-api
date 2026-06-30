@@ -1,32 +1,38 @@
-import path from 'path'
-import { createRequire } from 'module'
-import { fileURLToPath } from 'url'
-import { defineConfig, loadEnv } from '@rsbuild/core'
-import { pluginReact } from '@rsbuild/plugin-react'
+import path from 'path';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { defineConfig, loadEnv } from '@rsbuild/core';
+import { pluginReact } from '@rsbuild/plugin-react';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const require = createRequire(import.meta.url)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const semiUiDir = path.resolve(
   path.dirname(require.resolve('@douyinfe/semi-ui')),
   '../..',
-)
+);
+
+function normalizeBasePath(value: string | undefined): string {
+  if (!value || value.trim() === '/' || value.trim() === '') return '';
+  return `/${value.trim().replace(/^\/+|\/+$/g, '')}`;
+}
 
 export default defineConfig(({ envMode }) => {
-  const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
+  const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] });
+  const basePath = normalizeBasePath(
+    process.env.VITE_APP_BASE_PATH || env.rawPublicVars.VITE_APP_BASE_PATH,
+  );
   const clientServerUrl =
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
-    ''
-  const proxyServerUrl =
-    clientServerUrl ||
-    'http://localhost:3000'
-  const isProd = envMode === 'production'
+    '';
+  const proxyServerUrl = clientServerUrl || 'http://localhost:3000';
+  const isProd = envMode === 'production';
   const devProxy = Object.fromEntries(
     (['/api', '/mj', '/pg'] as const).map((key) => [
       key,
       { target: proxyServerUrl, changeOrigin: true },
     ]),
-  ) as Record<string, { target: string; changeOrigin: boolean }>
+  ) as Record<string, { target: string; changeOrigin: boolean }>;
 
   return {
     plugins: [pluginReact()],
@@ -35,9 +41,9 @@ export default defineConfig(({ envMode }) => {
         index: './src/index.jsx',
       },
       define: {
-        'import.meta.env.VITE_REACT_APP_SERVER_URL': JSON.stringify(
-          clientServerUrl,
-        ),
+        'import.meta.env.VITE_REACT_APP_SERVER_URL':
+          JSON.stringify(clientServerUrl),
+        'import.meta.env.VITE_APP_BASE_PATH': JSON.stringify(basePath),
       },
     },
     resolve: {
@@ -54,6 +60,7 @@ export default defineConfig(({ envMode }) => {
       template: './index.html',
     },
     server: {
+      base: basePath || '/',
       host: '0.0.0.0',
       strictPort: true,
       proxy: devProxy,
@@ -64,6 +71,7 @@ export default defineConfig(({ envMode }) => {
       distPath: {
         root: 'dist',
       },
+      assetPrefix: basePath || '/',
     },
     performance: {
       removeConsole: isProd ? ['log'] : false,
@@ -103,5 +111,5 @@ export default defineConfig(({ envMode }) => {
         },
       },
     },
-  }
-})
+  };
+});

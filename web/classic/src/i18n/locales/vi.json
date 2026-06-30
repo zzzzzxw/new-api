@@ -4214,6 +4214,23 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "备份与恢复": "Sao lưu và khôi phục",
+    "备份包含敏感数据": "Bản sao lưu chứa dữ liệu nhạy cảm",
+    "导出的文件包含用户、令牌、渠道、密钥、计费记录和系统设置，请妥善保存。": "Tệp xuất ra gồm người dùng, token, kênh, khóa, bản ghi thanh toán và cài đặt hệ thống. Hãy lưu trữ an toàn.",
+    "导出备份": "Xuất bản sao lưu",
+    "下载当前主数据库的 JSON 备份文件。": "Tải xuống bản sao lưu JSON của cơ sở dữ liệu chính hiện tại.",
+    "导入备份": "Nhập bản sao lưu",
+    "恢复备份文件并替换当前数据库数据。": "Khôi phục tệp sao lưu và thay thế dữ liệu cơ sở dữ liệu hiện tại.",
+    "备份已导出": "Đã xuất bản sao lưu",
+    "备份导出失败": "Xuất bản sao lưu thất bại",
+    "请先选择备份文件": "Hãy chọn tệp sao lưu trước",
+    "备份导入失败": "Nhập bản sao lưu thất bại",
+    "备份已导入：{{tables}} 张表，共 {{rows}} 行": "Đã nhập sao lưu: {{rows}} dòng trong {{tables}} bảng",
+    "确认导入备份？": "Nhập bản sao lưu?",
+    "将导入文件": "Tệp sẽ nhập",
+    "导入备份会替换当前数据库记录，此操作不可恢复，请提前确认已导出当前数据。": "Nhập bản sao lưu sẽ thay thế bản ghi cơ sở dữ liệu hiện tại. Thao tác này không thể hoàn tác. Hãy xuất dữ liệu hiện tại trước nếu cần.",
+    "确认导入": "Xác nhận nhập",
+    "已选择": "Đã chọn"
   }
 }

@@ -168,7 +168,26 @@ func (c ChannelInfo) Value() (driver.Value, error) {
 
 // Scan implements sql.Scanner interface
 func (c *ChannelInfo) Scan(value interface{}) error {
-	bytesValue, _ := value.([]byte)
+	var bytesValue []byte
+	switch typed := value.(type) {
+	case nil:
+		*c = ChannelInfo{}
+		return nil
+	case []byte:
+		bytesValue = typed
+	case string:
+		bytesValue = []byte(typed)
+	default:
+		encoded, err := common.Marshal(typed)
+		if err != nil {
+			return err
+		}
+		bytesValue = encoded
+	}
+	if strings.TrimSpace(string(bytesValue)) == "" {
+		*c = ChannelInfo{}
+		return nil
+	}
 	return common.Unmarshal(bytesValue, c)
 }
 

@@ -3680,6 +3680,23 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "备份与恢复": "Sauvegarde et restauration",
+    "备份包含敏感数据": "La sauvegarde contient des données sensibles",
+    "导出的文件包含用户、令牌、渠道、密钥、计费记录和系统设置，请妥善保存。": "Le fichier exporté inclut les utilisateurs, jetons, canaux, clés, factures et paramètres système. Conservez-le en sécurité.",
+    "导出备份": "Exporter la sauvegarde",
+    "下载当前主数据库的 JSON 备份文件。": "Télécharge une sauvegarde JSON de la base principale actuelle.",
+    "导入备份": "Importer une sauvegarde",
+    "恢复备份文件并替换当前数据库数据。": "Restaure un fichier de sauvegarde et remplace les données actuelles.",
+    "备份已导出": "Sauvegarde exportée",
+    "备份导出失败": "Échec de l'exportation de la sauvegarde",
+    "请先选择备份文件": "Sélectionnez d'abord un fichier de sauvegarde",
+    "备份导入失败": "Échec de l'importation de la sauvegarde",
+    "备份已导入：{{tables}} 张表，共 {{rows}} 行": "Sauvegarde importée : {{rows}} lignes dans {{tables}} tables",
+    "确认导入备份？": "Importer la sauvegarde ?",
+    "将导入文件": "Fichier à importer",
+    "导入备份会替换当前数据库记录，此操作不可恢复，请提前确认已导出当前数据。": "L'importation remplacera les enregistrements actuels. Cette action est irréversible. Exportez d'abord les données actuelles si nécessaire.",
+    "确认导入": "Confirmer l'importation",
+    "已选择": "Sélectionné"
   }
 }

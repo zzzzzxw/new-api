@@ -13,6 +13,7 @@ Examples:
   ./run-standalone.sh
   ./run-standalone.sh --port 3000
   PORT=3000 ./run-standalone.sh
+  VITE_APP_BASE_PATH=/zhuxiangwei-macmini ./run-standalone.sh --port 3000
   ./run-standalone.sh --skip-build
 EOF
 }
@@ -72,6 +73,9 @@ SQLITE_PATH=./one-api.db
 TZ=Asia/Shanghai
 ERROR_LOG_ENABLED=true
 BATCH_UPDATE_ENABLED=true
+# Frontend mount path, for example: /zhuxiangwei-macmini
+# Leave empty when serving from the domain root.
+VITE_APP_BASE_PATH=
 EOF
     echo "Created .env with a generated SESSION_SECRET."
     return
@@ -84,6 +88,18 @@ EOF
     } >>"$ENV_FILE"
     echo "Added SESSION_SECRET to existing .env."
   fi
+}
+
+load_env() {
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      export "$line"
+    fi
+  done <"$ENV_FILE"
 }
 
 build_frontends() {
@@ -108,6 +124,7 @@ build_frontends() {
 
 need_command go
 ensure_env
+load_env
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
   build_frontends
