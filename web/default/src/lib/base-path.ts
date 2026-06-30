@@ -16,19 +16,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-/**
- * Application-wide constants
- */
 
-import { withBasePath } from './base-path'
+function normalizeBasePath(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === '/') return ''
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`
+}
 
-// System Configuration Defaults
-export const DEFAULT_SYSTEM_NAME = 'New API'
-export const DEFAULT_LOGO = withBasePath('/logo.png')
+export const APP_BASE_PATH = normalizeBasePath(
+  import.meta.env.VITE_APP_BASE_PATH
+)
 
-// LocalStorage Keys
-export const STORAGE_KEYS = {
-  SYSTEM_NAME: 'system_name',
-  LOGO: 'logo',
-  FOOTER_HTML: 'footer_html',
-} as const
+export function withBasePath(path: string): string {
+  if (!APP_BASE_PATH) return path
+  if (!path || path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  if (
+    normalizedPath === APP_BASE_PATH ||
+    normalizedPath.startsWith(`${APP_BASE_PATH}/`)
+  ) {
+    return normalizedPath
+  }
+  return `${APP_BASE_PATH}${normalizedPath}`
+}

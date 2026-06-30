@@ -20,6 +20,7 @@ import axios, { type AxiosRequestConfig } from 'axios'
 import { t } from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import { APP_BASE_PATH } from './base-path'
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -35,8 +36,8 @@ export type ApiRequestConfig = AxiosRequestConfig
 // Axios Instance Configuration
 // ============================================================================
 
-// Base URL: empty string for same-origin API requests
-const baseURL = ''
+// Base URL: same-origin root by default, or the configured frontend mount path.
+const baseURL = import.meta.env.VITE_REACT_APP_SERVER_URL || APP_BASE_PATH
 
 // Create axios instance with default config
 export const api = axios.create({

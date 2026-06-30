@@ -17,25 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { StatusContext } from '../../context/Status';
-import { withBasePath } from '../../helpers/basePath';
+function normalizeBasePath(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '/') return '';
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
+}
 
-const SetupCheck = ({ children }) => {
-  const [statusState] = useContext(StatusContext);
-  const location = useLocation();
+export const APP_BASE_PATH = normalizeBasePath(
+  import.meta.env.VITE_APP_BASE_PATH,
+);
 
-  useEffect(() => {
-    if (
-      statusState?.status?.setup === false &&
-      location.pathname !== '/setup'
-    ) {
-      window.location.href = withBasePath('/setup');
-    }
-  }, [statusState?.status?.setup, location.pathname]);
-
-  return children;
-};
-
-export default SetupCheck;
+export function withBasePath(path) {
+  if (!APP_BASE_PATH) return path;
+  if (!path || path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (
+    normalizedPath === APP_BASE_PATH ||
+    normalizedPath.startsWith(`${APP_BASE_PATH}/`)
+  ) {
+    return normalizedPath;
+  }
+  return `${APP_BASE_PATH}${normalizedPath}`;
+}
