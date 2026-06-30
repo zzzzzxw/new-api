@@ -24,9 +24,29 @@ function normalizeBasePath(value) {
   return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
 }
 
+function detectRuntimeBasePath() {
+  if (typeof document === 'undefined') return '';
+  const assetElements = document.querySelectorAll(
+    'script[src*="/static/"],link[href*="/static/"]',
+  );
+  for (const element of assetElements) {
+    const assetUrl = element.src || element.href;
+    try {
+      const url = new URL(assetUrl, window.location.origin);
+      const markerIndex = url.pathname.indexOf('/static/');
+      if (markerIndex > 0) {
+        return normalizeBasePath(url.pathname.slice(0, markerIndex));
+      }
+    } catch {
+      // Ignore malformed asset URLs and continue probing other assets.
+    }
+  }
+  return '';
+}
+
 export const APP_BASE_PATH = normalizeBasePath(
   import.meta.env.VITE_APP_BASE_PATH,
-);
+) || detectRuntimeBasePath();
 
 export function withBasePath(path) {
   if (!APP_BASE_PATH) return path;
