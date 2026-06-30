@@ -209,10 +209,58 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	err = http.ListenAndServe(":"+port, server)
+	err = http.ListenAndServe(":"+port, withAppBasePath(server))
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
 	}
+}
+
+func normalizeAppBasePath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || trimmed == "/" {
+		return ""
+	}
+	return "/" + strings.Trim(trimmed, "/")
+}
+
+type appBasePathResponseWriter struct {
+	http.ResponseWriter
+	basePath string
+}
+
+func (w appBasePathResponseWriter) WriteHeader(statusCode int) {
+	location := w.Header().Get("Location")
+	if location != "" &&
+		strings.HasPrefix(location, "/") &&
+		!strings.HasPrefix(location, "//") &&
+		location != w.basePath &&
+		!strings.HasPrefix(location, w.basePath+"/") {
+		w.Header().Set("Location", w.basePath+location)
+	}
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func withAppBasePath(handler http.Handler) http.Handler {
+	basePath := normalizeAppBasePath(os.Getenv("VITE_APP_BASE_PATH"))
+	if basePath == "" {
+		return handler
+	}
+	common.SysLog("app context path enabled: " + basePath)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == basePath {
+			r.URL.Path = "/"
+			r.URL.RawPath = ""
+		} else if strings.HasPrefix(r.URL.Path, basePath+"/") {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, basePath)
+			if r.URL.RawPath != "" {
+				r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, basePath)
+			}
+		}
+		handler.ServeHTTP(appBasePathResponseWriter{
+			ResponseWriter: w,
+			basePath:       basePath,
+		}, r)
+	})
 }
 
 func InjectUmamiAnalytics() {
