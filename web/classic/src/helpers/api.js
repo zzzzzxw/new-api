@@ -25,12 +25,12 @@ import {
 } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
-import { APP_BASE_PATH, withBasePath } from './basePath';
+import { withBasePath } from './basePath';
 
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
     ? import.meta.env.VITE_REACT_APP_SERVER_URL
-    : APP_BASE_PATH,
+    : '',
   headers: {
     'New-API-User': getUserIdFromLocalStorage(),
     'Cache-Control': 'no-store',
@@ -83,7 +83,7 @@ export function updateAPI() {
   API = axios.create({
     baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
       ? import.meta.env.VITE_REACT_APP_SERVER_URL
-      : APP_BASE_PATH,
+      : '',
     headers: {
       'New-API-User': getUserIdFromLocalStorage(),
       'Cache-Control': 'no-store',
