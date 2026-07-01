@@ -54,3 +54,26 @@ func TestWithAppBasePathRewritesRootRelativeRedirects(t *testing.T) {
 	assert.Equal(t, http.StatusMovedPermanently, recorder.Code)
 	assert.Equal(t, "/zhuxiangwei-macmini/api/channel/?p=1", recorder.Header().Get("Location"))
 }
+
+func TestWithAppBasePathPreservesFlusher(t *testing.T) {
+	original := os.Getenv("VITE_APP_BASE_PATH")
+	t.Cleanup(func() {
+		require.NoError(t, os.Setenv("VITE_APP_BASE_PATH", original))
+	})
+	require.NoError(t, os.Setenv("VITE_APP_BASE_PATH", "/zhuxiangwei-macmini"))
+
+	handler := withAppBasePath(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+		_, _ = w.Write([]byte("data: ok\n\n"))
+		flusher.Flush()
+	}))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/zhuxiangwei-macmini/v1/chat/completions", nil)
+	handler.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "data: ok\n\n", recorder.Body.String())
+	assert.True(t, recorder.Flushed)
+}

@@ -240,6 +240,12 @@ func (w appBasePathResponseWriter) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
+func (w appBasePathResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func withAppBasePath(handler http.Handler) http.Handler {
 	basePath := normalizeAppBasePath(os.Getenv("VITE_APP_BASE_PATH"))
 	if basePath == "" {
