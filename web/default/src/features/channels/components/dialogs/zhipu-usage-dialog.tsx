@@ -209,11 +209,48 @@ function zhipuQuotaTitle(record: Record<string, unknown>) {
   return 'Quota Limit'
 }
 
-function pickNumber(record: Record<string, unknown>, keys: string[]) {
+function pickNumberEntry(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = toFiniteNumber(record[key])
-    if (value !== null) return value
+    if (value !== null) return { key, value }
   }
+  return null
+}
+
+function normalizeQuotaPercent(key: string, value: number) {
+  if (/percent|percentage/i.test(key)) return value
+  return value <= 1 ? value * 100 : value
+}
+
+function deriveQuotaPercent(record: Record<string, unknown>) {
+  const percentEntry = pickNumberEntry(record, [
+    'usedPercent',
+    'usePercent',
+    'usagePercent',
+    'percent',
+    'percentage',
+    'rate',
+    'ratio',
+  ])
+  if (percentEntry !== null) {
+    return normalizeQuotaPercent(percentEntry.key, percentEntry.value)
+  }
+
+  const currentValue = toFiniteNumber(record.currentValue)
+  const usage = toFiniteNumber(record.usage)
+  if (currentValue !== null && usage !== null && usage > 0) {
+    return (currentValue / usage) * 100
+  }
+
+  const remaining = toFiniteNumber(record.remaining)
+  if (
+    currentValue !== null &&
+    remaining !== null &&
+    currentValue + remaining > 0
+  ) {
+    return (currentValue / (currentValue + remaining)) * 100
+  }
+
   return null
 }
 
@@ -221,20 +258,11 @@ function buildQuotaCards(response: ZhipuUsageResponse | null): QuotaCardData[] {
   const quotaPayload = unwrapEndpoint(response, 'quota_limit')
   const candidates = findObjects(quotaPayload)
     .map((record) => {
-      const percent =
-        pickNumber(record, [
-          'usedPercent',
-          'usePercent',
-          'usagePercent',
-          'percent',
-          'percentage',
-          'rate',
-          'ratio',
-        ]) ?? null
+      const percent = deriveQuotaPercent(record)
       if (percent === null) return null
       return {
         title: zhipuQuotaTitle(record),
-        percent: percent <= 1 ? percent * 100 : percent,
+        percent,
         resetTime:
           pickString(record, [
             'resetTime',
