@@ -572,7 +572,7 @@ func TestResponsesRequestToChatCompletionsRequestPreservesReasoningInput(t *test
 		{
 			"type": "reasoning",
 			"id":   "rs_abc",
-			"content": []map[string]any{
+			"summary": []map[string]any{
 				{"type": "summary_text", "text": "Let me think about this."},
 			},
 		},

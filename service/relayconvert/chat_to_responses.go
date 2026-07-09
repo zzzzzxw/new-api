@@ -163,7 +163,7 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 			if reasoning := strings.TrimSpace(msg.GetReasoningContent()); reasoning != "" {
 				inputItems = append(inputItems, map[string]any{
 					"type": "reasoning",
-					"content": []map[string]any{
+					"summary": []map[string]any{
 						{"type": "summary_text", "text": reasoning},
 					},
 				})

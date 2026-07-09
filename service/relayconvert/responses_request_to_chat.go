@@ -984,12 +984,17 @@ func responsesArgumentsString(value any) string {
 
 // responsesReasoningItemToContent extracts the textual reasoning from a
 // Responses API reasoning input item. Codex passes previous reasoning back as
-// items like {"type":"reasoning","content":[{"type":"summary_text","text":"..."}]}.
+// items like {"type":"reasoning","summary":[{"type":"summary_text","text":"..."}]}.
 // Providers in thinking mode (e.g. DeepSeek) require this to come back as
 // assistant message `reasoning_content`, otherwise they reject the request.
 func responsesReasoningItemToContent(item map[string]any) string {
-	// Prefer the structured content parts (summary_text / text).
-	if parts, ok := item["content"].([]any); ok {
+	// Prefer the official Responses reasoning summary parts, then tolerate
+	// older compatibility payloads that used content.
+	for _, key := range []string{"summary", "content"} {
+		parts, ok := item[key].([]any)
+		if !ok {
+			continue
+		}
 		var sb strings.Builder
 		for _, raw := range parts {
 			part, ok := raw.(map[string]any)

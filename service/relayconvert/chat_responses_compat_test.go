@@ -55,7 +55,8 @@ func TestChatCompletionsRequestToResponsesPreservesReasoningContent(t *testing.T
 
 	// input: [0] user "hi", [1] reasoning, [2] assistant "answer", [3] user "follow up"
 	assert.Equal(t, "reasoning", gjson.GetBytes(got.Input, "1.type").String())
-	assert.Equal(t, reasoning, gjson.GetBytes(got.Input, "1.content.0.text").String())
+	assert.Equal(t, reasoning, gjson.GetBytes(got.Input, "1.summary.0.text").String())
+	assert.False(t, gjson.GetBytes(got.Input, "1.content").Exists())
 	assert.Equal(t, "assistant", gjson.GetBytes(got.Input, "2.role").String())
 	assert.Equal(t, "answer", gjson.GetBytes(got.Input, "2.content").String())
 	assert.Equal(t, "user", gjson.GetBytes(got.Input, "3.role").String())
