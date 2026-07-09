@@ -209,6 +209,13 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 	if textRequest.ReasoningEffort != "" {
 		switch textRequest.ReasoningEffort {
+		case "none":
+			claudeRequest.Thinking = nil
+		case "minimal":
+			claudeRequest.Thinking = &dto.Thinking{
+				Type:         "enabled",
+				BudgetTokens: common.GetPointer[int](1024),
+			}
 		case "low":
 			claudeRequest.Thinking = &dto.Thinking{
 				Type:         "enabled",
@@ -223,6 +230,20 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 			claudeRequest.Thinking = &dto.Thinking{
 				Type:         "enabled",
 				BudgetTokens: common.GetPointer[int](4096),
+			}
+		case "xhigh":
+			claudeRequest.Thinking = &dto.Thinking{
+				Type:         "enabled",
+				BudgetTokens: common.GetPointer[int](8192),
+			}
+		case "max":
+			budgetTokens := 4096
+			if claudeRequest.MaxTokens != nil && int(*claudeRequest.MaxTokens) > budgetTokens {
+				budgetTokens = int(*claudeRequest.MaxTokens)
+			}
+			claudeRequest.Thinking = &dto.Thinking{
+				Type:         "enabled",
+				BudgetTokens: common.GetPointer[int](budgetTokens),
 			}
 		}
 	}

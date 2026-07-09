@@ -1,6 +1,8 @@
 package advancedcustom
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestAdaptorUsesExactRouteAndQueryAuth(t *testing.T) {
@@ -316,6 +319,87 @@ func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	parsedURL, err := url.Parse(requestURL)
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/chat/completions", parsedURL.Path)
+}
+
+func TestAdaptorNormalizesCodexReasoningForOpenRouterAdvancedChat(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/responses",
+				UpstreamPath: "/v1/chat/completions",
+				Converter:    dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+			},
+		},
+	})
+	info.ChannelBaseUrl = "https://openrouter.ai/api/v1"
+	info.RelayMode = relayconstant.RelayModeResponses
+	info.RequestURLPath = "/v1/responses"
+	c := advancedCustomGinContext("/v1/responses")
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+		Model:     "deepseek/deepseek-chat-max",
+		Input:     mustAdvancedCustomRawMessage(t, "hello"),
+		Reasoning: &dto.Reasoning{Effort: "max"},
+	})
+	require.NoError(t, err)
+
+	chatReq, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Equal(t, "xhigh", chatReq.ReasoningEffort)
+}
+
+func TestAdaptorNormalizesCodexReasoningForGLMAdvancedChat(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/responses",
+				UpstreamPath: "/chat/completions",
+				Converter:    dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+			},
+		},
+	})
+	info.ChannelBaseUrl = "https://open.bigmodel.cn/api/coding/paas/v4"
+	info.RelayMode = relayconstant.RelayModeResponses
+	info.RequestURLPath = "/v1/responses"
+	c := advancedCustomGinContext("/v1/responses")
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+		Model: "glm-5.2-max",
+		Input: mustAdvancedCustomRawMessage(t, "hello"),
+	})
+	require.NoError(t, err)
+
+	chatReq, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Equal(t, "glm-5.2", chatReq.Model)
+	assert.Equal(t, "high", chatReq.ReasoningEffort)
+}
+
+func TestSanitizeOpenAICompatibleChatToolsBodyNormalizesFinalJSON(t *testing.T) {
+	body := mustAdvancedCustomRawMessage(t, map[string]any{
+		"model": "glm-5.2",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hi"},
+		},
+		"tools": []map[string]any{
+			{"type": "tool_search"},
+			{"type": "mcp", "name": "browser.click"},
+		},
+	})
+
+	reader, size, changed, err := sanitizeOpenAICompatibleChatToolsBody(bytes.NewReader(body))
+	require.NoError(t, err)
+	require.True(t, changed)
+	assert.Greater(t, size, int64(0))
+
+	sanitized, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	assert.Equal(t, "function", gjson.GetBytes(sanitized, "tools.0.type").String())
+	assert.Equal(t, "function", gjson.GetBytes(sanitized, "tools.1.type").String())
+	assert.Equal(t, "tool_search", gjson.GetBytes(sanitized, "tools.0.function.name").String())
+	assert.Equal(t, "codex__mcp__browser_click", gjson.GetBytes(sanitized, "tools.1.function.name").String())
 }
 
 func advancedCustomRelayInfo(config *dto.AdvancedCustomConfig) *relaycommon.RelayInfo {

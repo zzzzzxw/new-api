@@ -347,7 +347,10 @@ type ResponsesOutput struct {
 	Size      string                   `json:"size"`
 	CallId    string                   `json:"call_id,omitempty"`
 	Name      string                   `json:"name,omitempty"`
+	Namespace string                   `json:"namespace,omitempty"`
 	Arguments json.RawMessage          `json:"arguments,omitempty"`
+	Input     string                   `json:"input,omitempty"`
+	Execution string                   `json:"execution,omitempty"`
 }
 
 // ArgumentsString returns function call arguments in the string form expected by Chat Completions.
@@ -390,10 +393,13 @@ const (
 
 // ResponsesStreamResponse 用于处理 /v1/responses 流式响应
 type ResponsesStreamResponse struct {
-	Type     string                   `json:"type"`
-	Response *OpenAIResponsesResponse `json:"response,omitempty"`
-	Delta    string                   `json:"delta,omitempty"`
-	Item     *ResponsesOutput         `json:"item,omitempty"`
+	Type      string                   `json:"type"`
+	Response  *OpenAIResponsesResponse `json:"response,omitempty"`
+	Delta     string                   `json:"delta,omitempty"`
+	Text      string                   `json:"text,omitempty"`
+	Arguments string                   `json:"arguments,omitempty"`
+	Input     string                   `json:"input,omitempty"`
+	Item      *ResponsesOutput         `json:"item,omitempty"`
 	// - response.function_call_arguments.delta
 	// - response.function_call_arguments.done
 	OutputIndex  *int                           `json:"output_index,omitempty"`

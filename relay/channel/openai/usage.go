@@ -12,11 +12,19 @@ func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, res
 		return
 	}
 
+	// DeepSeek uses a non-standard top-level "prompt_cache_hit_tokens" field
+	// instead of the standard "prompt_tokens_details.cached_tokens".  This
+	// fallback runs for all channel types, not just the native DeepSeek
+	// channel, so that advanced-custom and other channels routing to DeepSeek
+	// also benefit from cache-token detection.
+	if usage.PromptTokensDetails.CachedTokens == 0 && usage.PromptCacheHitTokens != 0 {
+		usage.PromptTokensDetails.CachedTokens = usage.PromptCacheHitTokens
+	}
+	if usage.PromptTokensDetails.CachedTokens == 0 && usage.InputTokensDetails != nil && usage.InputTokensDetails.CachedTokens > 0 {
+		usage.PromptTokensDetails.CachedTokens = usage.InputTokensDetails.CachedTokens
+	}
+
 	switch info.ChannelType {
-	case constant.ChannelTypeDeepSeek:
-		if usage.PromptTokensDetails.CachedTokens == 0 && usage.PromptCacheHitTokens != 0 {
-			usage.PromptTokensDetails.CachedTokens = usage.PromptCacheHitTokens
-		}
 	case constant.ChannelTypeZhipu_v4:
 		// 智普的cached_tokens在标准位置: usage.prompt_tokens_details.cached_tokens
 		if usage.PromptTokensDetails.CachedTokens == 0 {

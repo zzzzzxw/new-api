@@ -1,6 +1,7 @@
 package advancedcustom
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -112,9 +113,38 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		if err != nil {
 			return nil, err
 		}
+		chatReq.ReasoningEffort = service.NormalizeCodexChatReasoningEffort(chatReq.ReasoningEffort, advancedCustomCodexReasoningMode(info, chatReq.Model))
 		return a.convertOpenAICompatibleRequest(c, info, chatReq)
 	default:
 		return nil, fmt.Errorf("converter %q does not support OpenAI Responses requests", converter)
+	}
+}
+
+func advancedCustomCodexReasoningMode(info *relaycommon.RelayInfo, model string) string {
+	if info == nil {
+		return ""
+	}
+	haystack := strings.ToLower(strings.Join([]string{
+		info.ChannelBaseUrl,
+		info.UpstreamModelName,
+		info.OriginModelName,
+		model,
+	}, " "))
+	switch {
+	case strings.Contains(haystack, "openrouter"):
+		return "openrouter"
+	case strings.Contains(haystack, "deepseek"):
+		return "deepseek"
+	case strings.Contains(haystack, "siliconflow"),
+		strings.Contains(haystack, "moonshot"),
+		strings.Contains(haystack, "kimi"),
+		strings.Contains(haystack, "minimax"),
+		strings.Contains(haystack, "bigmodel"),
+		strings.Contains(haystack, "zhipu"),
+		strings.Contains(haystack, "glm-"):
+		return "low_high"
+	default:
+		return ""
 	}
 }
 
@@ -206,6 +236,16 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		return channel.DoWssRequest(a, c, info, requestBody)
 	}
+	if shouldSanitizeOpenAICompatibleChatTools(a.converter) && requestBody != nil {
+		sanitizedBody, size, changed, err := sanitizeOpenAICompatibleChatToolsBody(requestBody)
+		if err != nil {
+			return nil, err
+		}
+		requestBody = sanitizedBody
+		if changed && info != nil {
+			info.UpstreamRequestBodySize = size
+		}
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
@@ -249,6 +289,29 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return ChannelName
+}
+
+func shouldSanitizeOpenAICompatibleChatTools(converter string) bool {
+	switch converter {
+	case dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+		dto.AdvancedCustomConverterAnthropicMessagesToOpenAIChatCompletions,
+		dto.AdvancedCustomConverterGeminiGenerateContentToOpenAIChatCompletions:
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeOpenAICompatibleChatToolsBody(requestBody io.Reader) (io.Reader, int64, bool, error) {
+	data, err := io.ReadAll(requestBody)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("read request body for tool sanitization failed: %w", err)
+	}
+	sanitized, changed, err := service.SanitizeChatCompletionsToolsJSON(data)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("sanitize chat completions tools failed: %w", err)
+	}
+	return bytes.NewReader(sanitized), int64(len(sanitized)), changed, nil
 }
 
 func (a *Adaptor) doNativeResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {

@@ -13,6 +13,18 @@ func ResponsesRequestToChatCompletionsRequest(req *dto.OpenAIResponsesRequest) (
 	return relayconvert.ResponsesRequestToChatCompletionsRequest(req)
 }
 
+func NormalizeCodexChatReasoningEffort(effort string, mode string) string {
+	return relayconvert.NormalizeCodexChatReasoningEffort(effort, mode)
+}
+
+func SanitizeChatCompletionsToolsJSON(data []byte) ([]byte, bool, error) {
+	return relayconvert.SanitizeChatCompletionsToolsJSON(data)
+}
+
+func SanitizeResponsesToolsJSON(data []byte) ([]byte, bool, error) {
+	return relayconvert.SanitizeResponsesToolsJSON(data)
+}
+
 func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id string) (*dto.OpenAIResponsesResponse, *dto.Usage, error) {
 	return relayconvert.ChatCompletionsResponseToResponsesResponse(resp, id)
 }

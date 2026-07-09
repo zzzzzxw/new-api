@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
@@ -101,6 +102,10 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
+		jsonData, err = sanitizeConvertedResponsesChatRequestJSON(convertedRequest, jsonData)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
@@ -163,4 +168,32 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		service.PostTextConsumeQuota(c, info, usageDto, nil)
 	}
 	return nil
+}
+
+func sanitizeConvertedResponsesChatRequestJSON(convertedRequest any, jsonData []byte) ([]byte, error) {
+	if _, ok := convertedRequest.(*dto.GeneralOpenAIRequest); !ok {
+		if shouldSanitizeResponsesToolsForUpstream(convertedRequest, jsonData) {
+			sanitized, _, err := service.SanitizeResponsesToolsJSON(jsonData)
+			if err != nil {
+				return nil, err
+			}
+			return sanitized, nil
+		}
+		return jsonData, nil
+	}
+	sanitized, _, err := service.SanitizeChatCompletionsToolsJSON(jsonData)
+	if err != nil {
+		return nil, err
+	}
+	return sanitized, nil
+}
+
+func shouldSanitizeResponsesToolsForUpstream(convertedRequest any, jsonData []byte) bool {
+	switch convertedRequest.(type) {
+	case dto.OpenAIResponsesRequest, *dto.OpenAIResponsesRequest:
+	default:
+		return false
+	}
+	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(jsonData, "model").String()))
+	return strings.Contains(model, "glm-")
 }

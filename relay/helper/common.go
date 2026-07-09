@@ -73,9 +73,21 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 }
 
 func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) {
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", data)})
+	_ = ResponseChunkDataNoFlush(c, resp, data)
 	_ = FlushWriter(c)
+}
+
+func ResponseChunkDataNoFlush(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
+	if c == nil || c.Writer == nil {
+		return errors.New("context or writer is nil")
+	}
+
+	if c.Request != nil && c.Request.Context().Err() != nil {
+		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
+	}
+
+	_, err := c.Writer.Write([]byte(fmt.Sprintf("event: %s\ndata: %s\n\n", resp.Type, data)))
+	return err
 }
 
 func StringData(c *gin.Context, str string) error {

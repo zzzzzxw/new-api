@@ -131,7 +131,7 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup"}}]},"finish_reason":null}]}`,
 		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":\"x\"}"}}]},"finish_reason":null}]}`,
 		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
-		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`,
+		`data: {"id":"chatcmpl_1","object":"chat.completion.chunk","created":1710000000,"model":"gpt-test","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5,"prompt_cache_hit_tokens":1}}`,
 		`data: [DONE]`,
 		``,
 	}, "\n")
@@ -145,6 +145,7 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 	require.Equal(t, 2, usage.PromptTokens)
 	require.Equal(t, 3, usage.CompletionTokens)
 	require.Equal(t, 5, usage.TotalTokens)
+	require.Equal(t, 1, usage.PromptTokensDetails.CachedTokens)
 
 	got := recorder.Body.String()
 	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
@@ -156,6 +157,7 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 	require.Contains(t, got, `event: response.completed`)
 	require.Contains(t, got, `"input_tokens":2`)
 	require.Contains(t, got, `"output_tokens":3`)
+	require.Contains(t, got, `"cached_tokens":1`)
 	requireOrderedSubstrings(t, got,
 		`event: response.created`,
 		`event: response.output_item.added`,
@@ -166,6 +168,38 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 		`event: response.function_call_arguments.done`,
 		`event: response.completed`,
 	)
+}
+
+func TestIsResponsesMilestoneEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		want      bool
+	}{
+		// Milestone events
+		{"response.output_item.added", true},
+		{"response.function_call_arguments.done", true},
+		{"response.custom_tool_call_input.done", true},
+		{"response.completed", true},
+		{"response.incomplete", true},
+		{"response.failed", true},
+		// Non-milestone events
+		{"response.created", false},
+		{"response.output_text.delta", false},
+		{"response.output_text.done", false},
+		{"response.output_item.done", false},
+		{"response.function_call_arguments.delta", false},
+		{"response.custom_tool_call_input.delta", false},
+		{"response.done", false},
+		{"response.error", false},
+		{"", false},
+		{"unknown", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.eventType, func(t *testing.T) {
+			got := isResponsesMilestoneEvent(tc.eventType)
+			require.Equal(t, tc.want, got, "isResponsesMilestoneEvent(%q)", tc.eventType)
+		})
+	}
 }
 
 func requireOrderedSubstrings(t *testing.T, s string, parts ...string) {

@@ -156,6 +156,20 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 			"role": role,
 		}
 
+		// Preserve reasoning_content from assistant messages as a reasoning
+		// input item. Providers with thinking mode require previous reasoning
+		// to be passed back in the conversation history.
+		if role == "assistant" {
+			if reasoning := strings.TrimSpace(msg.GetReasoningContent()); reasoning != "" {
+				inputItems = append(inputItems, map[string]any{
+					"type": "reasoning",
+					"content": []map[string]any{
+						{"type": "summary_text", "text": reasoning},
+					},
+				})
+			}
+		}
+
 		if msg.Content == nil {
 			item["content"] = ""
 			inputItems = append(inputItems, item)

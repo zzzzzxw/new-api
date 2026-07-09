@@ -963,9 +963,13 @@ type Reasoning struct {
 }
 
 type Input struct {
-	Type    string          `json:"type,omitempty"`
-	Role    string          `json:"role,omitempty"`
-	Content json.RawMessage `json:"content,omitempty"`
+	Type     string          `json:"type,omitempty"`
+	Role     string          `json:"role,omitempty"`
+	Content  json.RawMessage `json:"content,omitempty"`
+	Text     string          `json:"text,omitempty"`
+	ImageUrl any             `json:"image_url,omitempty"`
+	FileUrl  any             `json:"file_url,omitempty"`
+	Detail   string          `json:"detail,omitempty"`
 }
 
 type MediaInput struct {
@@ -1005,6 +1009,10 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 		var inputs []Input
 		_ = common.Unmarshal(r.Input, &inputs)
 		for _, input := range inputs {
+			if media, ok := responsesInputItemToMediaInput(input); ok {
+				mediaInputs = append(mediaInputs, media)
+			}
+
 			if common.GetJsonType(input.Content) == "string" {
 				var str string
 				_ = common.Unmarshal(input.Content, &str)
@@ -1066,4 +1074,61 @@ func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
 	}
 
 	return mediaInputs
+}
+
+func responsesInputItemToMediaInput(input Input) (MediaInput, bool) {
+	switch input.Type {
+	case "input_text":
+		if input.Text != "" {
+			return MediaInput{Type: "input_text", Text: input.Text}, true
+		}
+		if len(input.Content) > 0 {
+			return MediaInput{Type: "input_text", Text: common.JsonRawMessageToString(input.Content)}, true
+		}
+	case "input_image":
+		if imageURL := responsesMediaURL(input.ImageUrl); imageURL != "" {
+			return MediaInput{Type: "input_image", ImageUrl: imageURL, Detail: input.Detail}, true
+		}
+		var item map[string]any
+		if len(input.Content) > 0 && common.Unmarshal(input.Content, &item) == nil {
+			if imageURL := responsesMediaURLFromMap(item, "image_url"); imageURL != "" {
+				return MediaInput{Type: "input_image", ImageUrl: imageURL, Detail: common.Interface2String(item["detail"])}, true
+			}
+		}
+	case "input_file":
+		if fileURL := responsesMediaURL(input.FileUrl); fileURL != "" {
+			return MediaInput{Type: "input_file", FileUrl: fileURL}, true
+		}
+		var item map[string]any
+		if len(input.Content) > 0 && common.Unmarshal(input.Content, &item) == nil {
+			if fileURL := responsesMediaURLFromMap(item, "file_url"); fileURL != "" {
+				return MediaInput{Type: "input_file", FileUrl: fileURL}, true
+			}
+		}
+	}
+	return MediaInput{}, false
+}
+
+func responsesMediaURL(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case map[string]any:
+		if url, ok := v["url"].(string); ok {
+			return url
+		}
+	}
+	return ""
+}
+
+func responsesMediaURLFromMap(item map[string]any, key string) string {
+	if url := responsesMediaURL(item[key]); url != "" {
+		return url
+	}
+	for _, fallbackKey := range []string{"url", "file_id"} {
+		if value := common.Interface2String(item[fallbackKey]); value != "" {
+			return value
+		}
+	}
+	return ""
 }

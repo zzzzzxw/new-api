@@ -603,7 +603,36 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if info != nil && request.Reasoning != nil && request.Reasoning.Effort != "" {
 		info.ReasoningEffort = request.Reasoning.Effort
 	}
+	if shouldUseChatCompletionsForResponsesCompat(info, request.Model) {
+		chatRequest, err := service.ResponsesRequestToChatCompletionsRequest(&request)
+		if err != nil {
+			return nil, err
+		}
+		chatRequest.ReasoningEffort = service.NormalizeCodexChatReasoningEffort(chatRequest.ReasoningEffort, "low_high")
+		if info != nil {
+			info.RequestURLPath = "/v1/chat/completions"
+			info.FinalRequestRelayFormat = types.RelayFormatOpenAI
+		}
+		return chatRequest, nil
+	}
 	return request, nil
+}
+
+func shouldUseChatCompletionsForResponsesCompat(info *relaycommon.RelayInfo, model string) bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		model,
+	}, " "))
+	if info != nil {
+		haystack = strings.ToLower(strings.Join([]string{
+			info.ChannelBaseUrl,
+			info.UpstreamModelName,
+			info.OriginModelName,
+			model,
+		}, " "))
+	}
+	return strings.Contains(haystack, "glm-") ||
+		strings.Contains(haystack, "bigmodel") ||
+		strings.Contains(haystack, "zhipu")
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
@@ -637,7 +666,13 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	case relayconstant.RelayModeRerank:
 		usage, err = common_handler.RerankHandler(c, info, resp)
 	case relayconstant.RelayModeResponses:
-		if info.IsStream {
+		if info.GetFinalRequestRelayFormat() == types.RelayFormatOpenAI {
+			if info.IsStream {
+				usage, err = OaiChatToResponsesStreamHandler(c, info, resp)
+			} else {
+				usage, err = OaiChatToResponsesHandler(c, info, resp)
+			}
+		} else if info.IsStream {
 			usage, err = OaiResponsesStreamHandler(c, info, resp)
 		} else {
 			usage, err = OaiResponsesHandler(c, info, resp)

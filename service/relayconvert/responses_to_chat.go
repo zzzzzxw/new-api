@@ -12,29 +12,32 @@ import (
 )
 
 const (
-	responsesEventCreated                  = "response.created"
-	responsesEventCompleted                = "response.completed"
-	responsesEventDone                     = "response.done"
-	responsesEventIncomplete               = "response.incomplete"
-	responsesEventFailed                   = "response.failed"
-	responsesEventError                    = "response.error"
-	responsesEventOutputTextDelta          = "response.output_text.delta"
-	responsesEventOutputItemAdded          = "response.output_item.added"
-	responsesEventOutputItemDone           = "response.output_item.done"
-	responsesEventFunctionArgsDelta        = "response.function_call_arguments.delta"
-	responsesEventFunctionArgsDone         = "response.function_call_arguments.done"
-	responsesEventCustomToolInputDelta     = "response.custom_tool_call_input.delta"
-	responsesEventCustomToolInputDone      = "response.custom_tool_call_input.done"
-	responsesEventReasoningSummaryDelta    = "response.reasoning_summary_text.delta"
-	responsesEventReasoningSummaryDone     = "response.reasoning_summary_text.done"
-	responsesEventReasoningTextDelta       = "response.reasoning_text.delta"
-	responsesEventReasoningTextDone        = "response.reasoning_text.done"
-	responsesOutputTypeFunctionCall        = "function_call"
-	responsesOutputTypeCustomToolCall      = "custom_tool_call"
-	responsesOutputTypeMessage             = "message"
-	responsesOutputTypeReasoning           = "reasoning"
-	responsesIncompleteReasonContentFilter = "content_filter"
-	responsesIncompleteReasonMaxTokens     = "max_output_tokens"
+	responsesEventCreated                   = "response.created"
+	responsesEventCompleted                 = "response.completed"
+	responsesEventDone                      = "response.done"
+	responsesEventIncomplete                = "response.incomplete"
+	responsesEventFailed                    = "response.failed"
+	responsesEventError                     = "response.error"
+	responsesEventOutputTextDelta           = "response.output_text.delta"
+	responsesEventOutputItemAdded           = "response.output_item.added"
+	responsesEventOutputItemDone            = "response.output_item.done"
+	responsesEventFunctionArgsDelta         = "response.function_call_arguments.delta"
+	responsesEventFunctionArgsDone          = "response.function_call_arguments.done"
+	responsesEventCustomToolInputDelta      = "response.custom_tool_call_input.delta"
+	responsesEventCustomToolInputDone       = "response.custom_tool_call_input.done"
+	responsesEventReasoningSummaryPartAdded = "response.reasoning_summary_part.added"
+	responsesEventReasoningSummaryPartDone  = "response.reasoning_summary_part.done"
+	responsesEventReasoningSummaryDelta     = "response.reasoning_summary_text.delta"
+	responsesEventReasoningSummaryDone      = "response.reasoning_summary_text.done"
+	responsesEventReasoningTextDelta        = "response.reasoning_text.delta"
+	responsesEventReasoningTextDone         = "response.reasoning_text.done"
+	responsesOutputTypeFunctionCall         = "function_call"
+	responsesOutputTypeCustomToolCall       = "custom_tool_call"
+	responsesOutputTypeToolSearchCall       = "tool_search_call"
+	responsesOutputTypeMessage              = "message"
+	responsesOutputTypeReasoning            = "reasoning"
+	responsesIncompleteReasonContentFilter  = "content_filter"
+	responsesIncompleteReasonMaxTokens      = "max_output_tokens"
 )
 
 func ResponsesFinishReasonFromStatus(resp *dto.OpenAIResponsesResponse) (string, bool) {
@@ -75,7 +78,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 			if !isResponsesToolOutputType(out.Type) {
 				continue
 			}
-			name := strings.TrimSpace(out.Name)
+			name := responsesOutputToolNameToChat(out.Name, out.Namespace)
 			if name == "" {
 				continue
 			}
@@ -241,6 +244,7 @@ type responsesStreamTool struct {
 	CallID     string
 	ItemID     string
 	Name       string
+	Namespace  string
 	Arguments  string
 	Index      int
 	Sent       bool
@@ -498,7 +502,10 @@ func (s *ResponsesToChatStreamState) ensureToolForEvent(event *dto.ResponsesStre
 	} else if tool.CallID == "" {
 		tool.CallID = strings.TrimSpace(event.Item.ID)
 	}
-	if name := strings.TrimSpace(event.Item.Name); name != "" {
+	if namespace := strings.TrimSpace(event.Item.Namespace); namespace != "" {
+		tool.Namespace = namespace
+	}
+	if name := responsesOutputToolNameToChat(event.Item.Name, tool.Namespace); name != "" {
 		tool.Name = name
 	}
 	return tool
@@ -752,6 +759,7 @@ type responsesBufferedTool struct {
 	CallID    string
 	ItemID    string
 	Name      string
+	Namespace string
 	Arguments strings.Builder
 }
 
@@ -833,6 +841,7 @@ func (a *ResponsesBufferedAccumulator) BuildOutput() []dto.ResponsesOutput {
 			ID:        tool.ItemID,
 			CallId:    tool.CallID,
 			Name:      tool.Name,
+			Namespace: tool.Namespace,
 			Arguments: argsRaw,
 		})
 	}
@@ -878,9 +887,24 @@ func (a *ResponsesBufferedAccumulator) applyToolMetadata(tool *responsesBuffered
 	} else if tool.CallID == "" {
 		tool.CallID = strings.TrimSpace(event.Item.ID)
 	}
+	if namespace := strings.TrimSpace(event.Item.Namespace); namespace != "" {
+		tool.Namespace = namespace
+	}
 	if name := strings.TrimSpace(event.Item.Name); name != "" {
 		tool.Name = name
 	}
+}
+
+func responsesOutputToolNameToChat(name string, namespace string) string {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return ""
+	}
+	trimmedNamespace := strings.TrimSpace(namespace)
+	if trimmedNamespace == "" {
+		return trimmedName
+	}
+	return chatCompatWrappedToolName(trimmedNamespace, trimmedName)
 }
 
 func (a *ResponsesBufferedAccumulator) findToolIndex(event *dto.ResponsesStreamResponse) (int, bool) {

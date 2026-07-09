@@ -1,6 +1,7 @@
 package relayconvert
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -35,6 +36,48 @@ func TestChatCompletionsRequestToResponsesRequestInstructionsAndTools(t *testing
 	assert.Equal(t, "function_call", gjson.GetBytes(got.Input, "2.type").String())
 	assert.Equal(t, "call_1", gjson.GetBytes(got.Input, "2.call_id").String())
 	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "3.type").String())
+}
+
+func TestChatCompletionsRequestToResponsesPreservesReasoningContent(t *testing.T) {
+	reasoning := "I should think about this carefully"
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "answer", ReasoningContent: &reasoning},
+			{Role: "user", Content: "follow up"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	// input: [0] user "hi", [1] reasoning, [2] assistant "answer", [3] user "follow up"
+	assert.Equal(t, "reasoning", gjson.GetBytes(got.Input, "1.type").String())
+	assert.Equal(t, reasoning, gjson.GetBytes(got.Input, "1.content.0.text").String())
+	assert.Equal(t, "assistant", gjson.GetBytes(got.Input, "2.role").String())
+	assert.Equal(t, "answer", gjson.GetBytes(got.Input, "2.content").String())
+	assert.Equal(t, "user", gjson.GetBytes(got.Input, "3.role").String())
+}
+
+func TestChatCompletionsRequestToResponsesOmitsReasoningWhenEmpty(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "answer"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	// No reasoning item should be emitted for non-thinking assistant messages.
+	for i := range gjson.GetBytes(got.Input, "#.type").Array() {
+		assert.NotEqual(t, "reasoning", gjson.GetBytes(got.Input, fmt.Sprintf("%d.type", i)).String())
+	}
 }
 
 func TestChatCompletionsRequestToResponsesRequestRejectsMultipleChoices(t *testing.T) {
@@ -84,6 +127,49 @@ func TestResponsesResponseToChatCompletionsPreservesTextAndToolCalls(t *testing.
 	assert.Equal(t, "lookup", toolCalls[0].Function.Name)
 	assert.Equal(t, `{"q":"x"}`, toolCalls[0].Function.Arguments)
 	assert.Equal(t, 7, usage.TotalTokens)
+}
+
+func TestUsageFromChatUsageMapsDeepSeekPromptCacheHitTokens(t *testing.T) {
+	usage := UsageFromChatUsage(&dto.Usage{
+		PromptTokens:         100,
+		CompletionTokens:     20,
+		TotalTokens:          120,
+		PromptCacheHitTokens: 80,
+	})
+
+	require.NotNil(t, usage)
+	require.NotNil(t, usage.InputTokensDetails)
+	assert.Equal(t, 80, usage.InputTokensDetails.CachedTokens)
+	assert.Equal(t, 80, usage.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 100, usage.InputTokens)
+	assert.Equal(t, 20, usage.OutputTokens)
+	assert.Equal(t, 120, usage.TotalTokens)
+}
+
+func TestResponsesResponseToChatCompletionsWrapsNamespacedToolCalls(t *testing.T) {
+	resp := &dto.OpenAIResponsesResponse{
+		ID:     "resp_1",
+		Model:  "gpt-test",
+		Status: []byte(`"completed"`),
+		Output: []dto.ResponsesOutput{
+			{
+				Type:      responsesOutputTypeFunctionCall,
+				ID:        "fc_1",
+				CallId:    "call_1",
+				Name:      "spawn_agent",
+				Namespace: "multi_agent_v1",
+				Arguments: []byte(`{"agent_type":"explore"}`),
+			},
+		},
+	}
+
+	chat, _, err := ResponsesResponseToChatCompletionsResponse(resp, "chatcmpl_1")
+	require.NoError(t, err)
+
+	toolCalls := chat.Choices[0].Message.ParseToolCalls()
+	require.Len(t, toolCalls, 1)
+	assert.Equal(t, "codex__multi_agent_v1__spawn_agent", toolCalls[0].Function.Name)
+	assert.Equal(t, `{"agent_type":"explore"}`, toolCalls[0].Function.Arguments)
 }
 
 func TestResponsesResponseToChatCompletionsPreservesReasoningSummary(t *testing.T) {
@@ -284,6 +370,34 @@ func TestResponsesStreamEventToChatChunksCustomToolAndReasoning(t *testing.T) {
 	assert.Equal(t, "content_filter", *chunks[4].Choices[0].FinishReason)
 }
 
+func TestResponsesStreamEventToChatChunksWrapsNamespacedToolCalls(t *testing.T) {
+	state := newTestResponsesStreamState()
+	outputIndex := 0
+
+	chunks := mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type:        responsesEventOutputItemAdded,
+		OutputIndex: &outputIndex,
+		Item: &dto.ResponsesOutput{
+			Type:      responsesOutputTypeFunctionCall,
+			ID:        "fc_1",
+			CallId:    "call_1",
+			Name:      "spawn_agent",
+			Namespace: "multi_agent_v1",
+		},
+	})
+	chunks = append(chunks, mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type:        responsesEventFunctionArgsDelta,
+		OutputIndex: &outputIndex,
+		Delta:       `{"agent_type":"explore"}`,
+	})...)
+
+	require.Len(t, chunks, 3)
+	toolName := chunks[1].Choices[0].Delta.ToolCalls[0].Function.Name
+	assert.Equal(t, "codex__multi_agent_v1__spawn_agent", toolName)
+	toolArgs := chunks[2].Choices[0].Delta.ToolCalls[0].Function.Arguments
+	assert.Equal(t, `{"agent_type":"explore"}`, toolArgs)
+}
+
 func TestResponsesStreamEventToChatChunksUsesTerminalDoneOutput(t *testing.T) {
 	state := newTestResponsesStreamState()
 	chunks := mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
@@ -377,6 +491,36 @@ func TestResponsesBufferedAccumulatorSupplementsEmptyTerminalOutput(t *testing.T
 	assert.Equal(t, `{"q":"x"}`, toolCalls[0].Function.Arguments)
 }
 
+func TestResponsesBufferedAccumulatorPreservesToolNamespace(t *testing.T) {
+	acc := NewResponsesBufferedAccumulator()
+	outputIndex := 1
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type:        responsesEventOutputItemAdded,
+		OutputIndex: &outputIndex,
+		Item: &dto.ResponsesOutput{
+			Type:      responsesOutputTypeFunctionCall,
+			ID:        "fc_1",
+			CallId:    "call_1",
+			Name:      "spawn_agent",
+			Namespace: "multi_agent_v1",
+		},
+	})
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type:        responsesEventFunctionArgsDelta,
+		OutputIndex: &outputIndex,
+		Delta:       `{"agent_type":"explore"}`,
+	})
+
+	resp := &dto.OpenAIResponsesResponse{Status: []byte(`"completed"`)}
+	acc.SupplementResponseOutput(resp)
+
+	chat, _, err := ResponsesResponseToChatCompletionsResponse(resp, "chatcmpl_1")
+	require.NoError(t, err)
+	toolCalls := chat.Choices[0].Message.ParseToolCalls()
+	require.Len(t, toolCalls, 1)
+	assert.Equal(t, "codex__multi_agent_v1__spawn_agent", toolCalls[0].Function.Name)
+}
+
 func TestResponsesBufferedAccumulatorDoesNotDuplicatePendingArgsWithOutputIndexAndItemID(t *testing.T) {
 	acc := NewResponsesBufferedAccumulator()
 	outputIndex := 1
@@ -443,6 +587,72 @@ func TestChatCompletionsResponseToResponsesPreservesTextToolCallsAndUsage(t *tes
 	assert.Equal(t, "call_1", resp.Output[1].CallId)
 	assert.Equal(t, "lookup", resp.Output[1].Name)
 	assert.Equal(t, `"{\"q\":\"x\"}"`, string(resp.Output[1].Arguments))
+}
+
+func TestChatCompletionsResponseToResponsesUnwrapsCodexCompatToolCalls(t *testing.T) {
+	chat := &dto.OpenAITextResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.OpenAITextResponseChoice{
+			{
+				Message:      assistantMessageWithTool("", "call_1", "codex__namespace__exec_command", `{"cmd":"pwd"}`),
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+
+	resp, _, err := ChatCompletionsResponseToResponsesResponse(chat, "resp_1")
+	require.NoError(t, err)
+
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, responsesOutputTypeFunctionCall, resp.Output[0].Type)
+	assert.Equal(t, "exec_command", resp.Output[0].Name)
+	assert.Equal(t, "namespace", resp.Output[0].Namespace)
+	assert.Equal(t, `"{\"cmd\":\"pwd\"}"`, string(resp.Output[0].Arguments))
+}
+
+func TestChatCompletionsResponseToResponsesRestoresMultiAgentNamespace(t *testing.T) {
+	chat := &dto.OpenAITextResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.OpenAITextResponseChoice{
+			{
+				Message:      assistantMessageWithTool("", "call_1", "codex__multi_agent_v1__spawn_agent", `{"agent_type":"explore"}`),
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+
+	resp, _, err := ChatCompletionsResponseToResponsesResponse(chat, "resp_1")
+	require.NoError(t, err)
+
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, responsesOutputTypeFunctionCall, resp.Output[0].Type)
+	assert.Equal(t, "spawn_agent", resp.Output[0].Name)
+	assert.Equal(t, "multi_agent_v1", resp.Output[0].Namespace)
+	assert.Equal(t, `"{\"agent_type\":\"explore\"}"`, string(resp.Output[0].Arguments))
+}
+
+func TestChatCompletionsResponseToResponsesRestoresCustomToolCall(t *testing.T) {
+	chat := &dto.OpenAITextResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.OpenAITextResponseChoice{
+			{
+				Message:      assistantMessageWithTool("", "call_1", "codex__custom__apply_patch", `{"input":"patch body"}`),
+				FinishReason: "tool_calls",
+			},
+		},
+	}
+
+	resp, _, err := ChatCompletionsResponseToResponsesResponse(chat, "resp_1")
+	require.NoError(t, err)
+
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, responsesOutputTypeCustomToolCall, resp.Output[0].Type)
+	assert.Equal(t, "apply_patch", resp.Output[0].Name)
+	assert.Equal(t, "patch body", resp.Output[0].Input)
+	assert.Empty(t, resp.Output[0].Arguments)
 }
 
 func TestChatCompletionsResponseToResponsesMapsIncompleteFinishReasons(t *testing.T) {
@@ -534,6 +744,132 @@ func TestChatCompletionsStreamToResponsesEventsAggregatesUsageAndToolArgs(t *tes
 	require.Len(t, events[9].Payload.Response.Output, 2)
 	assert.Equal(t, "hello", events[9].Payload.Response.Output[0].Content[0].Text)
 	assert.Equal(t, `"{\"q\":\"x\"}"`, string(events[9].Payload.Response.Output[1].Arguments))
+}
+
+func TestChatCompletionsStreamToResponsesReasoningSummaryOrder(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
+	reasoning := "think"
+	finishReason := "stop"
+
+	var events []ChatToResponsesStreamEvent
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Index: 0,
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					ReasoningContent: &reasoning,
+				},
+			},
+		},
+	})...)
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, FinishReason: &finishReason},
+		},
+	})...)
+	events = append(events, FinalizeChatCompletionsStreamToResponses(state)...)
+
+	require.Len(t, events, 8)
+	assert.Equal(t, responsesEventCreated, events[0].Type)
+	assert.Equal(t, responsesEventOutputItemAdded, events[1].Type)
+	assert.Equal(t, responsesEventReasoningSummaryPartAdded, events[2].Type)
+	assert.Equal(t, responsesEventReasoningSummaryDelta, events[3].Type)
+	assert.Equal(t, responsesEventReasoningSummaryDone, events[4].Type)
+	assert.Equal(t, responsesEventReasoningSummaryPartDone, events[5].Type)
+	assert.Equal(t, responsesEventOutputItemDone, events[6].Type)
+	assert.Equal(t, responsesEventCompleted, events[7].Type)
+
+	assert.Equal(t, reasoning, events[3].Payload.Delta)
+	assert.Equal(t, reasoning, events[4].Payload.Text)
+	require.NotNil(t, events[5].Payload.Part)
+	assert.Equal(t, reasoning, events[5].Payload.Part.Text)
+	assert.Equal(t, 0, *events[2].Payload.SummaryIndex)
+	assert.Equal(t, 0, *events[3].Payload.SummaryIndex)
+}
+
+func TestChatCompletionsStreamToResponsesRestoresCustomToolInputEvents(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
+	toolIndex := 0
+
+	var events []ChatToResponsesStreamEvent
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
+				{Index: &toolIndex, ID: "call_1", Type: "function", Function: dto.FunctionResponse{Name: "codex__custom__apply_patch"}},
+			}}},
+		},
+	})...)
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
+				{Index: &toolIndex, Function: dto.FunctionResponse{Arguments: `{"input":"patch body"}`}},
+			}}},
+		},
+	})...)
+	finishReason := "tool_calls"
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, FinishReason: &finishReason},
+		},
+	})...)
+	events = append(events, FinalizeChatCompletionsStreamToResponses(state)...)
+
+	require.Len(t, events, 6)
+	assert.Equal(t, responsesEventOutputItemAdded, events[1].Type)
+	assert.Equal(t, responsesOutputTypeCustomToolCall, events[1].Payload.Item.Type)
+	assert.Empty(t, events[1].Payload.Item.Namespace)
+	assert.Equal(t, responsesEventCustomToolInputDelta, events[2].Type)
+	assert.Equal(t, "patch body", events[2].Payload.Delta)
+	assert.Equal(t, responsesEventCustomToolInputDone, events[3].Type)
+	assert.Equal(t, "patch body", events[3].Payload.Input)
+	assert.Equal(t, responsesEventOutputItemDone, events[4].Type)
+	assert.Equal(t, responsesOutputTypeCustomToolCall, events[4].Payload.Item.Type)
+	assert.Equal(t, "patch body", events[4].Payload.Item.Input)
+	assert.Equal(t, responsesEventCompleted, events[5].Type)
+}
+
+func TestChatCompletionsStreamToResponsesRestoresMultiAgentNamespace(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_1", "gpt-test")
+	toolIndex := 0
+
+	var events []ChatToResponsesStreamEvent
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_1",
+		Model: "gpt-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
+				{Index: &toolIndex, ID: "call_1", Type: "function", Function: dto.FunctionResponse{Name: "codex__multi_agent_v1__spawn_agent"}},
+			}}},
+		},
+	})...)
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
+				{Index: &toolIndex, Function: dto.FunctionResponse{Arguments: `{"agent_type":"explore"}`}},
+			}}},
+		},
+	})...)
+	finishReason := "tool_calls"
+	events = append(events, mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{Index: 0, FinishReason: &finishReason},
+		},
+	})...)
+	events = append(events, FinalizeChatCompletionsStreamToResponses(state)...)
+
+	require.Len(t, events, 6)
+	assert.Equal(t, responsesEventOutputItemAdded, events[1].Type)
+	assert.Equal(t, "spawn_agent", events[1].Payload.Item.Name)
+	assert.Equal(t, "multi_agent_v1", events[1].Payload.Item.Namespace)
+	assert.Equal(t, responsesEventFunctionArgsDone, events[3].Type)
+	assert.Equal(t, `{"agent_type":"explore"}`, events[3].Payload.Arguments)
+	assert.Equal(t, responsesEventOutputItemDone, events[4].Type)
+	assert.Equal(t, "multi_agent_v1", events[4].Payload.Item.Namespace)
+	assert.Equal(t, responsesEventCompleted, events[5].Type)
 }
 
 func assistantMessageWithTool(content string, id string, name string, args string) dto.Message {
