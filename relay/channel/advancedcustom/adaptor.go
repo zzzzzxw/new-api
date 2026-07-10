@@ -113,7 +113,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		if err != nil {
 			return nil, err
 		}
-		chatReq.ReasoningEffort = service.NormalizeCodexChatReasoningEffort(chatReq.ReasoningEffort, advancedCustomCodexReasoningMode(info, chatReq.Model))
+		originalEffort := chatReq.ReasoningEffort
+		defaultEffort := service.NormalizeCodexChatReasoningEffort(originalEffort, advancedCustomCodexReasoningMode(info, chatReq.Model))
+		chatReq.ReasoningEffort = service.ApplyChannelReasoningEffortMapping(info, chatReq.Model, originalEffort, defaultEffort)
 		return a.convertOpenAICompatibleRequest(c, info, chatReq)
 	default:
 		return nil, fmt.Errorf("converter %q does not support OpenAI Responses requests", converter)

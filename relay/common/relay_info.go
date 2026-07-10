@@ -61,23 +61,25 @@ type ResponsesUsageInfo struct {
 }
 
 type ChannelMeta struct {
-	ChannelType          int
-	ChannelId            int
-	ChannelIsMultiKey    bool
-	ChannelMultiKeyIndex int
-	ChannelBaseUrl       string
-	ApiType              int
-	ApiVersion           string
-	ApiKey               string
-	Organization         string
-	ChannelCreateTime    int64
-	ParamOverride        map[string]interface{}
-	HeadersOverride      map[string]interface{}
-	ChannelSetting       dto.ChannelSettings
-	ChannelOtherSettings dto.ChannelOtherSettings
-	UpstreamModelName    string
-	IsModelMapped        bool
-	SupportStreamOptions bool // 是否支持流式选项
+	ChannelType            int
+	ChannelId              int
+	ChannelIsMultiKey      bool
+	ChannelMultiKeyIndex   int
+	ChannelBaseUrl         string
+	ApiType                int
+	ApiVersion             string
+	ApiKey                 string
+	Organization           string
+	ChannelCreateTime      int64
+	ParamOverride          map[string]interface{}
+	HeadersOverride        map[string]interface{}
+	ChannelSetting         dto.ChannelSettings
+	ChannelOtherSettings   dto.ChannelOtherSettings
+	UpstreamModelName      string
+	ReasoningEffortEnabled *bool
+	ReasoningEffortMapping string
+	IsModelMapped          bool
+	SupportStreamOptions   bool // 是否支持流式选项
 }
 
 type TokenCountMeta struct {
@@ -153,6 +155,10 @@ type RelayInfo struct {
 	RuntimeHeadersOverride                map[string]interface{}
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
+	RequestParameters                     map[string]interface{}
+	UpstreamRequestParameters             map[string]interface{}
+	UpstreamResponseParameters            map[string]interface{}
+	ReasoningEffortResolved               bool
 
 	// UpstreamRequestBodySize is the byte size of the marshaled upstream request
 	// body. It is set when the body is wrapped in a BodyStorage (see
@@ -189,6 +195,7 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.ReasoningEffortResolved = false
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
@@ -227,6 +234,13 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	if ok {
 		channelMeta.ChannelOtherSettings = channelOtherSettings
 	}
+
+	if enabled, exists := common.GetContextKey(c, constant.ContextKeyChannelReasoningEffortEnabled); exists {
+		if enabledBool, ok := enabled.(bool); ok {
+			channelMeta.ReasoningEffortEnabled = &enabledBool
+		}
+	}
+	channelMeta.ReasoningEffortMapping = common.GetContextKeyString(c, constant.ContextKeyChannelReasoningEffortMapping)
 
 	if streamSupportedChannels[channelMeta.ChannelType] {
 		channelMeta.SupportStreamOptions = true

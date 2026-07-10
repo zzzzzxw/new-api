@@ -32,6 +32,7 @@ func OaiChatToResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if err := common.Unmarshal(body, &chatResp); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.SetUpstreamResponseParametersFromJSON(body)
 	if oaiError := chatResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		logger.LogWarn(c, fmt.Sprintf("[CHAT2RESP-ERROR] status=%d type=%s code=%v", resp.StatusCode, oaiError.Type, oaiError.Code))
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -84,6 +85,7 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	responseID := helper.GetResponseID(c)
 	state := relayconvert.NewChatToResponsesStreamState(responseID, info.UpstreamModelName)
 	streamErr := (*types.NewAPIError)(nil)
+	var lastStreamData string
 
 	sendEvents := func(events []relayconvert.ChatToResponsesStreamEvent) bool {
 		if len(events) == 0 {
@@ -108,6 +110,7 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		lastStreamData = data
 		if streamErr != nil {
 			sr.Stop(streamErr)
 			return
@@ -147,6 +150,7 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	if streamErr != nil {
 		return nil, streamErr
 	}
+	info.SetUpstreamResponseParametersFromJSON(common.StringToByteSlice(lastStreamData))
 
 	usage := state.Usage
 	if usage == nil || usage.TotalTokens == 0 {

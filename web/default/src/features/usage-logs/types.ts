@@ -132,6 +132,9 @@ export interface LogOtherData {
   user_agent?: string
   request_path?: string
   request_conversion?: string[]
+  request_parameters?: Record<string, unknown>
+  upstream_request_parameters?: Record<string, unknown>
+  upstream_response_parameters?: Record<string, unknown>
   ws?: boolean
   audio?: boolean
   audio_input?: number

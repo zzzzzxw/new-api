@@ -357,6 +357,8 @@ export const FIELD_DESCRIPTIONS = {
   GROUP: 'User groups that can access this channel. ',
   MODEL_MAPPING:
     'Map request model names to actual provider model names (JSON format)',
+  REASONING_EFFORT_MAPPING:
+    'Map incoming reasoning effort levels to the levels accepted by the final upstream model.',
   PRIORITY: 'Higher priority channels are selected first',
   WEIGHT: 'Used for load balancing. Higher weight = more requests',
   TEST_MODEL: 'Model to use when testing channel connectivity',

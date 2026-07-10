@@ -136,6 +136,48 @@ function DetailSection(props: {
   )
 }
 
+function formatJsonPreview(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function RequestParametersSection(props: {
+  label: string
+  value: unknown
+  copiedText: string | null
+  copyToClipboard: (text: string) => void | Promise<unknown>
+}) {
+  const { t } = useTranslation()
+  const jsonText = formatJsonPreview(props.value)
+
+  return (
+    <DetailSection label={props.label}>
+      <div className='relative min-w-0'>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='absolute top-0 right-0 h-5 w-5 p-0'
+          onClick={() => props.copyToClipboard(jsonText)}
+          title={t('Copy to clipboard')}
+          aria-label={t('Copy to clipboard')}
+        >
+          {props.copiedText === jsonText ? (
+            <Check className='size-3 text-green-600' />
+          ) : (
+            <Copy className='size-3' />
+          )}
+        </Button>
+        <pre className='max-h-60 min-w-0 overflow-auto pr-6 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap sm:wrap-break-word'>
+          {jsonText}
+        </pre>
+      </div>
+    </DetailSection>
+  )
+}
+
 function formatRatio(ratio: number | undefined): string {
   if (ratio == null) return '-'
   return ratio.toFixed(4)
@@ -700,6 +742,33 @@ export function DetailsDialog(props: DetailsDialogProps) {
               </div>
             </div>
           </DetailSection>
+        )}
+
+        {props.isAdmin && other?.request_parameters && (
+          <RequestParametersSection
+            label={t('Request Parameters')}
+            value={other.request_parameters}
+            copiedText={copiedText}
+            copyToClipboard={copyToClipboard}
+          />
+        )}
+
+        {props.isAdmin && other?.upstream_request_parameters && (
+          <RequestParametersSection
+            label={t('Upstream Request Parameters')}
+            value={other.upstream_request_parameters}
+            copiedText={copiedText}
+            copyToClipboard={copyToClipboard}
+          />
+        )}
+
+        {props.isAdmin && other?.upstream_response_parameters && (
+          <RequestParametersSection
+            label={t('Upstream Response Parameters')}
+            value={other.upstream_response_parameters}
+            copiedText={copiedText}
+            copyToClipboard={copyToClipboard}
+          />
         )}
 
         {/* Reject reason (admin only) */}

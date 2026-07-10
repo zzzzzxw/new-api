@@ -962,6 +962,12 @@ type Reasoning struct {
 	Summary string `json:"summary,omitempty"`
 }
 
+type ReasoningEffortMappingRule struct {
+	Model                      string `json:"model"`
+	OriginalReasoningEffort    string `json:"original_reasoning_effort"`
+	ReplacementReasoningEffort string `json:"replacement_reasoning_effort"`
+}
+
 type Input struct {
 	Type     string          `json:"type,omitempty"`
 	Role     string          `json:"role,omitempty"`

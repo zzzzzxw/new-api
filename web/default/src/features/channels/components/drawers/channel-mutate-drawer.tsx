@@ -175,6 +175,7 @@ import {
 import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dialog'
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
+import { ReasoningEffortMappingEditor } from '../reasoning-effort-mapping-editor'
 import {
   ChannelAdvancedSection,
   ChannelApiAccessSection,
@@ -701,6 +702,7 @@ export function ChannelMutateDrawer({
   const currentModels = form.watch('models')
   const currentName = form.watch('name')
   const currentModelMapping = form.watch('model_mapping')
+  const reasoningEffortEnabled = form.watch('reasoning_effort_enabled')
   const awsKeyType = form.watch('aws_key_type')
   const vertexKeyType = form.watch('vertex_key_type')
   const upstreamModelUpdateCheckEnabled = form.watch(
@@ -1056,6 +1058,17 @@ export function ChannelMutateDrawer({
       label: model,
     }))
   }, [allModelsList, currentModelsArray])
+
+  const reasoningEffortModelOptions = useMemo(
+    () => [
+      ...new Set([
+        ...redirectModelList,
+        ...currentModelsArray,
+        ...allModelsList,
+      ]),
+    ],
+    [redirectModelList, currentModelsArray, allModelsList]
+  )
 
   const modelMappingGuardrail = useMemo<ModelMappingGuardrail>(() => {
     if (!currentModelMapping?.trim()) {
@@ -3416,6 +3429,110 @@ export function ChannelMutateDrawer({
                                       </AlertDescription>
                                     </Alert>
                                   )}
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className='border-border/60 rounded-lg border p-4'>
+                            <FormField
+                              control={form.control}
+                              name='reasoning_effort_mapping'
+                              render={({ field }) => (
+                                <FormItem className='space-y-3'>
+                                  <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                                    <div className='space-y-1'>
+                                      <div className='flex items-center gap-2'>
+                                        <FormLabel className='mb-0'>
+                                          {t('Model Reasoning Effort Mapping')}
+                                        </FormLabel>
+                                        <Tooltip>
+                                          <TooltipTrigger
+                                            render={
+                                              <Button
+                                                type='button'
+                                                variant='ghost'
+                                                size='icon-sm'
+                                                className='text-muted-foreground hover:text-foreground size-auto p-0'
+                                                aria-label={t(
+                                                  'How reasoning effort mapping works'
+                                                )}
+                                              />
+                                            }
+                                          >
+                                            <HelpCircle
+                                              className='h-4 w-4'
+                                              aria-hidden='true'
+                                            />
+                                          </TooltipTrigger>
+                                          <TooltipContent
+                                            side='top'
+                                            align='start'
+                                            className='max-w-sm space-y-2 text-left'
+                                          >
+                                            <p className='text-xs font-semibold tracking-wide uppercase'>
+                                              {t('Request flow')}
+                                            </p>
+                                            <p className='text-xs leading-relaxed'>
+                                              {t(
+                                                'Rules match the final upstream model after Model Mapping is applied, then replace the reasoning effort received from the client.'
+                                              )}
+                                            </p>
+                                            <div className='font-mono text-xs'>
+                                              glm-5.2 / medium
+                                              <ArrowRight
+                                                className='mx-1 inline h-3.5 w-3.5 opacity-70'
+                                                aria-hidden='true'
+                                              />
+                                              high
+                                            </div>
+                                            <p className='text-[11px] leading-relaxed opacity-80'>
+                                              {t(
+                                                'When no rule matches, the existing default reasoning effort mapping is used. Disabling support removes the reasoning effort before sending the upstream request.'
+                                              )}
+                                            </p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </div>
+                                      <FormDescription>
+                                        {t(
+                                          FIELD_DESCRIPTIONS.REASONING_EFFORT_MAPPING
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormField
+                                      control={form.control}
+                                      name='reasoning_effort_enabled'
+                                      render={({ field: enabledField }) => (
+                                        <div className='flex shrink-0 items-center gap-2'>
+                                          <span className='text-sm font-medium'>
+                                            {t('Supports Reasoning Effort')}
+                                          </span>
+                                          <Switch
+                                            checked={enabledField.value}
+                                            onCheckedChange={
+                                              enabledField.onChange
+                                            }
+                                            disabled={isSubmitting}
+                                            aria-label={t(
+                                              'Supports Reasoning Effort'
+                                            )}
+                                          />
+                                        </div>
+                                      )}
+                                    />
+                                  </div>
+                                  <FormControl>
+                                    <ReasoningEffortMappingEditor
+                                      value={field.value || ''}
+                                      onChange={field.onChange}
+                                      disabled={
+                                        isSubmitting || !reasoningEffortEnabled
+                                      }
+                                      modelOptions={reasoningEffortModelOptions}
+                                    />
+                                  </FormControl>
                                   <FormMessage />
                                 </FormItem>
                               )}

@@ -333,7 +333,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		// 转换模型推理力度后缀
 		effort, originModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
 		if effort != "" {
-			request.ReasoningEffort = effort
+			if !info.ReasoningEffortResolved {
+				request.ReasoningEffort = effort
+			}
 			info.UpstreamModelName = originModel
 			request.Model = originModel
 		}
@@ -608,12 +610,17 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		if err != nil {
 			return nil, err
 		}
-		chatRequest.ReasoningEffort = service.NormalizeCodexChatReasoningEffort(chatRequest.ReasoningEffort, "low_high")
+		originalEffort := chatRequest.ReasoningEffort
+		defaultEffort := service.NormalizeCodexChatReasoningEffort(originalEffort, "low_high")
+		chatRequest.ReasoningEffort = service.ApplyChannelReasoningEffortMapping(info, chatRequest.Model, originalEffort, defaultEffort)
 		if info != nil {
 			info.RequestURLPath = "/v1/chat/completions"
 			info.FinalRequestRelayFormat = types.RelayFormatOpenAI
 		}
 		return chatRequest, nil
+	}
+	if request.Reasoning != nil {
+		request.Reasoning.Effort = service.ApplyChannelReasoningEffortMapping(info, request.Model, request.Reasoning.Effort, request.Reasoning.Effort)
 	}
 	return request, nil
 }

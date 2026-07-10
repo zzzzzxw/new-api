@@ -21,25 +21,27 @@ import (
 )
 
 type Channel struct {
-	Id                 int     `json:"id"`
-	Type               int     `json:"type" gorm:"default:0"`
-	Key                string  `json:"key" gorm:"not null"`
-	OpenAIOrganization *string `json:"openai_organization"`
-	TestModel          *string `json:"test_model"`
-	Status             int     `json:"status" gorm:"default:1"`
-	Name               string  `json:"name" gorm:"index"`
-	Weight             *uint   `json:"weight" gorm:"default:0"`
-	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
-	TestTime           int64   `json:"test_time" gorm:"bigint"`
-	ResponseTime       int     `json:"response_time"` // in milliseconds
-	BaseURL            *string `json:"base_url" gorm:"column:base_url;default:''"`
-	Other              string  `json:"other"`
-	Balance            float64 `json:"balance"` // in USD
-	BalanceUpdatedTime int64   `json:"balance_updated_time" gorm:"bigint"`
-	Models             string  `json:"models"`
-	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
-	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
-	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
+	Id                     int     `json:"id"`
+	Type                   int     `json:"type" gorm:"default:0"`
+	Key                    string  `json:"key" gorm:"not null"`
+	OpenAIOrganization     *string `json:"openai_organization"`
+	TestModel              *string `json:"test_model"`
+	Status                 int     `json:"status" gorm:"default:1"`
+	Name                   string  `json:"name" gorm:"index"`
+	Weight                 *uint   `json:"weight" gorm:"default:0"`
+	CreatedTime            int64   `json:"created_time" gorm:"bigint"`
+	TestTime               int64   `json:"test_time" gorm:"bigint"`
+	ResponseTime           int     `json:"response_time"` // in milliseconds
+	BaseURL                *string `json:"base_url" gorm:"column:base_url;default:''"`
+	Other                  string  `json:"other"`
+	Balance                float64 `json:"balance"` // in USD
+	BalanceUpdatedTime     int64   `json:"balance_updated_time" gorm:"bigint"`
+	Models                 string  `json:"models"`
+	Group                  string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	UsedQuota              int64   `json:"used_quota" gorm:"bigint;default:0"`
+	ModelMapping           *string `json:"model_mapping" gorm:"type:text"`
+	ReasoningEffortEnabled *bool   `json:"reasoning_effort_enabled"`
+	ReasoningEffortMapping *string `json:"reasoning_effort_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
@@ -525,6 +527,17 @@ func (channel *Channel) GetModelMapping() string {
 	return *channel.ModelMapping
 }
 
+func (channel *Channel) GetReasoningEffortEnabled() bool {
+	return channel.ReasoningEffortEnabled == nil || *channel.ReasoningEffortEnabled
+}
+
+func (channel *Channel) GetReasoningEffortMapping() string {
+	if channel.ReasoningEffortMapping == nil {
+		return ""
+	}
+	return *channel.ReasoningEffortMapping
+}
+
 func (channel *Channel) GetStatusCodeMapping() string {
 	if channel.StatusCodeMapping == nil {
 		return ""
@@ -979,6 +992,26 @@ func (channel *Channel) ValidateSettings() error {
 	if channelOtherSettings.AdvancedCustom != nil {
 		if err := channelOtherSettings.AdvancedCustom.Validate(); err != nil {
 			return err
+		}
+	}
+	if rawMapping := strings.TrimSpace(channel.GetReasoningEffortMapping()); rawMapping != "" {
+		var rules []dto.ReasoningEffortMappingRule
+		if err := common.UnmarshalJsonStr(rawMapping, &rules); err != nil {
+			return fmt.Errorf("reasoning_effort_mapping must be a valid JSON array")
+		}
+		seen := make(map[string]struct{}, len(rules))
+		for _, rule := range rules {
+			modelName := strings.TrimSpace(rule.Model)
+			originalEffort := strings.ToLower(strings.TrimSpace(rule.OriginalReasoningEffort))
+			replacementEffort := strings.ToLower(strings.TrimSpace(rule.ReplacementReasoningEffort))
+			if modelName == "" || originalEffort == "" || replacementEffort == "" {
+				return fmt.Errorf("reasoning_effort_mapping entries require model, original_reasoning_effort, and replacement_reasoning_effort")
+			}
+			key := modelName + "\x00" + originalEffort
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("reasoning_effort_mapping contains duplicate model and original_reasoning_effort entries")
+			}
+			seen[key] = struct{}{}
 		}
 	}
 	return nil

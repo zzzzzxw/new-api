@@ -377,6 +377,127 @@ func TestAdaptorNormalizesCodexReasoningForGLMAdvancedChat(t *testing.T) {
 	assert.Equal(t, "high", chatReq.ReasoningEffort)
 }
 
+func TestAdaptorAppliesConfiguredReasoningEffortMapping(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/responses",
+				UpstreamPath: "/chat/completions",
+				Converter:    dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+			},
+		},
+	})
+	info.ChannelBaseUrl = "https://open.bigmodel.cn/api/coding/paas/v4"
+	reasoningEffortEnabled := true
+	info.ReasoningEffortEnabled = &reasoningEffortEnabled
+	info.ReasoningEffortMapping = `[{"model":"glm-5.2","original_reasoning_effort":"medium","replacement_reasoning_effort":"low"}]`
+	info.RelayMode = relayconstant.RelayModeResponses
+	info.RequestURLPath = "/v1/responses"
+	c := advancedCustomGinContext("/v1/responses")
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+		Model:     "glm-5.2",
+		Input:     mustAdvancedCustomRawMessage(t, "hello"),
+		Reasoning: &dto.Reasoning{Effort: "medium"},
+	})
+	require.NoError(t, err)
+
+	chatReq, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Equal(t, "low", chatReq.ReasoningEffort)
+}
+
+func TestAdaptorOmitsReasoningEffortWhenChannelDisablesIt(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{
+			{
+				IncomingPath: "/v1/responses",
+				UpstreamPath: "/chat/completions",
+				Converter:    dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+			},
+		},
+	})
+	info.ChannelBaseUrl = "https://api.deepseek.com"
+	reasoningEffortEnabled := false
+	info.ReasoningEffortEnabled = &reasoningEffortEnabled
+	info.RelayMode = relayconstant.RelayModeResponses
+	info.RequestURLPath = "/v1/responses"
+	c := advancedCustomGinContext("/v1/responses")
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+		Model:     "deepseek-chat",
+		Input:     mustAdvancedCustomRawMessage(t, "hello"),
+		Reasoning: &dto.Reasoning{Effort: "xhigh"},
+	})
+	require.NoError(t, err)
+
+	chatReq, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Empty(t, chatReq.ReasoningEffort)
+}
+
+func TestAdaptorReasoningEffortConfigWinsOverMappedModelSuffix(t *testing.T) {
+	tests := []struct {
+		name                    string
+		reasoningEffortEnabled  bool
+		reasoningEffortMapping  string
+		expectedReasoningEffort string
+	}{
+		{
+			name:                    "disabled channel keeps effort omitted",
+			reasoningEffortEnabled:  false,
+			expectedReasoningEffort: "",
+		},
+		{
+			name:                    "custom mapping replaces suffix effort",
+			reasoningEffortEnabled:  true,
+			reasoningEffortMapping:  `[{"model":"gpt-5.5-high","original_reasoning_effort":"medium","replacement_reasoning_effort":"low"}]`,
+			expectedReasoningEffort: "low",
+		},
+		{
+			name:                    "unconfigured mapping keeps suffix behavior",
+			reasoningEffortEnabled:  true,
+			expectedReasoningEffort: "high",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adaptor := &Adaptor{}
+			info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+				Routes: []dto.AdvancedCustomRoute{
+					{
+						IncomingPath: "/v1/responses",
+						UpstreamPath: "/chat/completions",
+						Converter:    dto.AdvancedCustomConverterOpenAIResponsesToOpenAIChatCompletions,
+					},
+				},
+			})
+			info.UpstreamModelName = "gpt-5.5-high"
+			info.ReasoningEffortEnabled = &tt.reasoningEffortEnabled
+			info.ReasoningEffortMapping = tt.reasoningEffortMapping
+			info.RelayMode = relayconstant.RelayModeResponses
+			info.RequestURLPath = "/v1/responses"
+			c := advancedCustomGinContext("/v1/responses")
+
+			converted, err := adaptor.ConvertOpenAIResponsesRequest(c, info, dto.OpenAIResponsesRequest{
+				Model:     "public-gpt",
+				Input:     mustAdvancedCustomRawMessage(t, "hello"),
+				Reasoning: &dto.Reasoning{Effort: "medium"},
+			})
+			require.NoError(t, err)
+
+			chatReq, ok := converted.(*dto.GeneralOpenAIRequest)
+			require.True(t, ok)
+			assert.Equal(t, "gpt-5.5", chatReq.Model)
+			assert.Equal(t, "gpt-5.5", info.UpstreamModelName)
+			assert.Equal(t, tt.expectedReasoningEffort, chatReq.ReasoningEffort)
+		})
+	}
+}
+
 func TestSanitizeOpenAICompatibleChatToolsBodyNormalizesFinalJSON(t *testing.T) {
 	body := mustAdvancedCustomRawMessage(t, map[string]any{
 		"model": "glm-5.2",

@@ -126,6 +126,9 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			delete(otherMap, "request_parameters")
+			delete(otherMap, "upstream_request_parameters")
+			delete(otherMap, "upstream_response_parameters")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
+
 import {
   CHANNEL_STATUS,
   ERROR_MESSAGES,
@@ -59,6 +60,38 @@ function isOptionalModelMapping(value: string | undefined): boolean {
     if (parsed === undefined) return true
     if (!isJsonObjectValue(parsed)) return false
     return Object.values(parsed).every((item) => typeof item === 'string')
+  } catch {
+    return false
+  }
+}
+
+function isOptionalReasoningEffortMapping(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    if (!Array.isArray(parsed)) return false
+
+    const seen = new Set<string>()
+    return parsed.every((item) => {
+      if (!isJsonObjectValue(item)) return false
+      const model = item.model
+      const originalEffort = item.original_reasoning_effort
+      const replacementEffort = item.replacement_reasoning_effort
+      if (
+        typeof model !== 'string' ||
+        typeof originalEffort !== 'string' ||
+        typeof replacementEffort !== 'string' ||
+        !model.trim() ||
+        !originalEffort.trim() ||
+        !replacementEffort.trim()
+      ) {
+        return false
+      }
+      const key = `${model.trim()}\u0000${originalEffort.trim().toLowerCase()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   } catch {
     return false
   }
@@ -142,6 +175,14 @@ export const channelFormSchema = z
       .refine(
         isOptionalModelMapping,
         'Model mapping must be a JSON object with string values'
+      ),
+    reasoning_effort_enabled: z.boolean(),
+    reasoning_effort_mapping: z
+      .string()
+      .optional()
+      .refine(
+        isOptionalReasoningEffortMapping,
+        'Reasoning effort mapping must be a JSON array with valid entries'
       ),
     priority: z.number().optional(),
     weight: z.number().optional(),
@@ -306,6 +347,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   models: '',
   group: ['default'],
   model_mapping: '',
+  reasoning_effort_enabled: true,
+  reasoning_effort_mapping: '',
   priority: 0,
   weight: 0,
   test_model: '',
@@ -447,6 +490,8 @@ export function transformChannelToFormDefaults(
     models: channel.models || '',
     group: parseGroups(channel.group || 'default'),
     model_mapping: channel.model_mapping || '',
+    reasoning_effort_enabled: channel.reasoning_effort_enabled ?? true,
+    reasoning_effort_mapping: channel.reasoning_effort_mapping || '',
     priority: channel.priority || 0,
     weight: channel.weight || 0,
     test_model: channel.test_model || '',
@@ -563,12 +608,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true
   } else {
     if ('disable_store' in settingsObj) delete settingsObj.disable_store
-    if ('allow_safety_identifier' in settingsObj)
+    if ('allow_safety_identifier' in settingsObj) {
       delete settingsObj.allow_safety_identifier
-    if ('allow_include_obfuscation' in settingsObj)
+    }
+    if ('allow_include_obfuscation' in settingsObj) {
       delete settingsObj.allow_include_obfuscation
-    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj)
+    }
+    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj) {
       delete settingsObj.allow_inference_geo
+    }
   }
 
   // Anthropic (type 14): claude_beta_query, allow_inference_geo, allow_speed
@@ -591,14 +639,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.upstream_model_update_auto_sync_enabled =
       settingsObj.upstream_model_update_check_enabled === true &&
       formData.upstream_model_update_auto_sync_enabled === true
-    settingsObj.upstream_model_update_ignored_models = Array.from(
-      new Set(
+    settingsObj.upstream_model_update_ignored_models = [
+      ...new Set(
         String(formData.upstream_model_update_ignored_models || '')
           .split(',')
           .map((model) => model.trim())
           .filter(Boolean)
-      )
-    )
+      ),
+    ]
     if (
       !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
       settingsObj.upstream_model_update_check_enabled !== true
@@ -650,6 +698,8 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     models: formData.models,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
+    reasoning_effort_enabled: formData.reasoning_effort_enabled,
+    reasoning_effort_mapping: formData.reasoning_effort_mapping || null,
     priority: formData.priority || null,
     weight: formData.weight || null,
     test_model: formData.test_model || null,
@@ -698,6 +748,8 @@ export function transformFormDataToUpdatePayload(
     models: formData.models,
     group: formatGroups(formData.group),
     model_mapping: formData.model_mapping || null,
+    reasoning_effort_enabled: formData.reasoning_effort_enabled,
+    reasoning_effort_mapping: formData.reasoning_effort_mapping || null,
     priority: formData.priority ?? 0,
     weight: formData.weight ?? 0,
     test_model: formData.test_model || null,
@@ -731,6 +783,7 @@ export function transformFormDataToUpdatePayload(
   payload.tag = formData.tag || ''
   payload.remark = formData.remark || ''
   payload.model_mapping = formData.model_mapping || ''
+  payload.reasoning_effort_mapping = formData.reasoning_effort_mapping || ''
   payload.status_code_mapping = formData.status_code_mapping || ''
   payload.param_override = formData.param_override || ''
   payload.header_override = formData.header_override || ''

@@ -47,6 +47,30 @@ func TestConvertOpenAIResponsesRequestUsesChatCompatForGLM(t *testing.T) {
 	assert.Equal(t, "codex__mcp__browser_click", chatReq.Tools[1].Function.Name)
 }
 
+func TestConvertOpenAIResponsesRequestAppliesNativeReasoningEffortConfig(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.5",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:            constant.ChannelTypeOpenAI,
+			UpstreamModelName:      "gpt-5.5",
+			ReasoningEffortEnabled: common.GetPointer(true),
+			ReasoningEffortMapping: `[{"model":"gpt-5.5","original_reasoning_effort":"high","replacement_reasoning_effort":"medium"}]`,
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:     "gpt-5.5",
+		Input:     mustOpenAIAdaptorRawMessage(t, "hi"),
+		Reasoning: &dto.Reasoning{Effort: "high"},
+	})
+	require.NoError(t, err)
+
+	responsesReq, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.NotNil(t, responsesReq.Reasoning)
+	assert.Equal(t, "medium", responsesReq.Reasoning.Effort)
+}
+
 func mustOpenAIAdaptorRawMessage(t *testing.T, value any) []byte {
 	t.Helper()
 	raw, err := common.Marshal(value)

@@ -79,7 +79,23 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendBillingInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
+	appendRequestParameterInfo(relayInfo, other)
 	return other
+}
+
+func appendRequestParameterInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil {
+		return
+	}
+	if relayInfo.RequestParameters != nil {
+		other["request_parameters"] = relayInfo.RequestParameters
+	}
+	if relayInfo.UpstreamRequestParameters != nil {
+		other["upstream_request_parameters"] = relayInfo.UpstreamRequestParameters
+	}
+	if relayInfo.UpstreamResponseParameters != nil {
+		other["upstream_response_parameters"] = relayInfo.UpstreamResponseParameters
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
