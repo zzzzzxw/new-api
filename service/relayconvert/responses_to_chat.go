@@ -947,7 +947,7 @@ func ensureIncompleteResponse(resp *dto.OpenAIResponsesResponse) *dto.OpenAIResp
 }
 
 func isResponsesToolOutputType(outputType string) bool {
-	return outputType == responsesOutputTypeFunctionCall || outputType == responsesOutputTypeCustomToolCall
+	return outputType == responsesOutputTypeFunctionCall || outputType == responsesOutputTypeCustomToolCall || outputType == responsesOutputTypeToolSearchCall
 }
 
 func responseStreamEventItemID(event *dto.ResponsesStreamResponse) string {
