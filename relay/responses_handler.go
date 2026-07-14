@@ -67,6 +67,10 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
 
+	if err := normalizeResponsesInputIDs(request); err != nil {
+		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
@@ -78,7 +82,22 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.ReaderOnly(storage)
+		jsonData, err := storage.Bytes()
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+		}
+		jsonData, err = normalizeResponsesInputIDsJSON(jsonData)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		defer closer.Close()
+		jsonData = nil
+		info.UpstreamRequestBodySize = size
+		requestBody = body
 		info.CopyRequestParametersToUpstream()
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
@@ -199,4 +218,78 @@ func shouldSanitizeResponsesToolsForUpstream(convertedRequest any, jsonData []by
 	}
 	model := strings.ToLower(strings.TrimSpace(gjson.GetBytes(jsonData, "model").String()))
 	return strings.Contains(model, "glm-")
+}
+
+// normalizeResponsesInputIDsJSON rewrites input item IDs in a raw Responses
+// API JSON body so that every `id` starts with "msg_". This is used for the
+// passthrough path where the request body bypasses the structured DTO.
+func normalizeResponsesInputIDsJSON(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
+	}
+	var body map[string]any
+	if err := common.Unmarshal(data, &body); err != nil {
+		return data, nil
+	}
+	input, ok := body["input"].([]any)
+	if !ok || len(input) == 0 {
+		return data, nil
+	}
+	changed := false
+	for i := range input {
+		item, ok := input[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		id, ok := item["id"].(string)
+		if !ok || id == "" || strings.HasPrefix(id, "msg_") {
+			continue
+		}
+		item["id"] = "msg_" + id
+		input[i] = item
+		changed = true
+	}
+	if !changed {
+		return data, nil
+	}
+	body["input"] = input
+	return common.Marshal(body)
+}
+
+// normalizeResponsesInputIDs rewrites any input item `id` field that does not
+// start with "msg_" to have that prefix. The Responses API validates that all
+// IDs begin with "msg_". This handles legacy IDs from chat→responses conversion
+// that used a "chatcmpl-..._msg_0" format, so users can switch between chat and
+// responses models mid-conversation without hitting ID validation errors.
+func normalizeResponsesInputIDs(request *dto.OpenAIResponsesRequest) error {
+	if request == nil || len(request.Input) == 0 || common.GetJsonType(request.Input) != "array" {
+		return nil
+	}
+
+	var items []map[string]any
+	if err := common.Unmarshal(request.Input, &items); err != nil {
+		return err
+	}
+
+	changed := false
+	for i := range items {
+		id, ok := items[i]["id"].(string)
+		if !ok || id == "" || strings.HasPrefix(id, "msg_") {
+			continue
+		}
+		items[i]["id"] = "msg_" + id
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	fixed, err := common.Marshal(items)
+	if err != nil {
+		return err
+	}
+	request.Input = fixed
+
+	return nil
 }
