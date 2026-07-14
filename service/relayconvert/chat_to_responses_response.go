@@ -45,7 +45,7 @@ func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id
 	if text := choice.Message.StringContent(); text != "" {
 		out.Output = append(out.Output, dto.ResponsesOutput{
 			Type:   responsesOutputTypeMessage,
-			ID:     fmt.Sprintf("%s_msg_0", id),
+			ID:     fmt.Sprintf("msg_%s_0", id),
 			Status: responseOutputStatus(out),
 			Role:   "assistant",
 			Content: []dto.ResponsesOutputContent{
@@ -60,7 +60,7 @@ func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id
 	if reasoning := choice.Message.GetReasoningContent(); reasoning != "" {
 		out.Output = append(out.Output, dto.ResponsesOutput{
 			Type:   responsesOutputTypeReasoning,
-			ID:     fmt.Sprintf("%s_reasoning_0", id),
+			ID:     fmt.Sprintf("msg_%s_reasoning_0", id),
 			Status: responseOutputStatus(out),
 			Content: []dto.ResponsesOutputContent{
 				{
@@ -350,7 +350,7 @@ func (s *ChatToResponsesStreamState) appendToolCallDelta(toolCall dto.ToolCallRe
 			Name:        rawName,
 		}
 		if tool.ID == "" {
-			tool.ID = fmt.Sprintf("%s_call_%d", s.ID, chatIndex)
+			tool.ID = fmt.Sprintf("msg_%s_call_%d", s.ID, chatIndex)
 		}
 		s.toolsByIndex[chatIndex] = tool
 		events = append(events, responsesStreamEvent(responsesEventOutputItemAdded, dto.ResponsesStreamResponse{
@@ -533,11 +533,11 @@ func (s *ChatToResponsesStreamState) outputStatus() string {
 }
 
 func (s *ChatToResponsesStreamState) messageID() string {
-	return fmt.Sprintf("%s_msg_0", s.ID)
+	return fmt.Sprintf("msg_%s_0", s.ID)
 }
 
 func (s *ChatToResponsesStreamState) reasoningID() string {
-	return fmt.Sprintf("%s_reasoning_0", s.ID)
+	return fmt.Sprintf("msg_%s_reasoning_0", s.ID)
 }
 
 func (s *ChatToResponsesStreamState) messageOutput(status string) *dto.ResponsesOutput {
@@ -602,7 +602,7 @@ func responseOutputStatus(resp *dto.OpenAIResponsesResponse) string {
 func chatToolCallToResponsesOutput(toolCall dto.ToolCallRequest, responseID string, index int, status string) (dto.ResponsesOutput, error) {
 	callID := strings.TrimSpace(toolCall.ID)
 	if callID == "" {
-		callID = fmt.Sprintf("%s_call_%d", responseID, index)
+		callID = fmt.Sprintf("msg_%s_call_%d", responseID, index)
 	}
 	if toolCall.Type == "" || toolCall.Type == "function" {
 		compatTool := normalizeChatCompatToolCall(toolCall.Function.Name, toolCall.Function.Arguments)
