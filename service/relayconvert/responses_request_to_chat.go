@@ -206,10 +206,34 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 		}
 		var pendingReasoning string
 		for _, item := range items {
-			if strings.TrimSpace(common.Interface2String(item["type"])) == responsesInputTypeReasoning {
-				pendingReasoning = responsesReasoningItemToContent(item)
+			itemType := strings.TrimSpace(common.Interface2String(item["type"]))
+			if itemType == responsesInputTypeReasoning {
+				reasoning := strings.TrimSpace(responsesReasoningItemToContent(item))
+				if reasoning != "" {
+					if pendingReasoning != "" {
+						pendingReasoning += "\n"
+					}
+					pendingReasoning += reasoning
+				}
 				continue
 			}
+
+			role := strings.TrimSpace(common.Interface2String(item["role"]))
+			canHostReasoning := role == "assistant"
+			switch itemType {
+			case responsesInputTypeFunctionCall, responsesInputTypeCustomToolCall, responsesInputTypeToolSearchCall:
+				canHostReasoning = true
+			}
+			if reasoning := strings.TrimSpace(pendingReasoning); reasoning != "" && !canHostReasoning {
+				rc := reasoning
+				messages = append(messages, dto.Message{
+					Role:             "assistant",
+					Content:          "",
+					ReasoningContent: &rc,
+				})
+				pendingReasoning = ""
+			}
+
 			nextMessages, err := responsesInputItemToChatMessages(item, messages)
 			if err != nil {
 				return nil, err
@@ -224,10 +248,12 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 					rc := reasoning
 					messages[len(messages)-1].ReasoningContent = &rc
 				} else {
-					assistant := dto.Message{Role: "assistant"}
 					rc := reasoning
-					assistant.ReasoningContent = &rc
-					messages = append(messages, assistant)
+					messages = append(messages, dto.Message{
+						Role:             "assistant",
+						Content:          "",
+						ReasoningContent: &rc,
+					})
 				}
 				pendingReasoning = ""
 			}
@@ -239,10 +265,12 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 				rc := reasoning
 				messages[len(messages)-1].ReasoningContent = &rc
 			} else {
-				assistant := dto.Message{Role: "assistant"}
 				rc := reasoning
-				assistant.ReasoningContent = &rc
-				messages = append(messages, assistant)
+				messages = append(messages, dto.Message{
+					Role:             "assistant",
+					Content:          "",
+					ReasoningContent: &rc,
+				})
 			}
 		}
 		return messages, nil

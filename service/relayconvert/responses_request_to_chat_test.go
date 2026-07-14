@@ -605,7 +605,7 @@ func TestResponsesRequestToChatCompletionsRequestPreservesReasoningInput(t *test
 
 func TestResponsesRequestToChatCompletionsRequestReasoningBeforeAssistantOnly(t *testing.T) {
 	// When a reasoning item appears with no following assistant message yet,
-	// an assistant message is created to host reasoning_content.
+	// a valid assistant message with empty string content is created to host it.
 	input := []map[string]any{
 		{
 			"type": "reasoning",
@@ -624,4 +624,46 @@ func TestResponsesRequestToChatCompletionsRequestReasoningBeforeAssistantOnly(t 
 	assert.Equal(t, "assistant", got.Messages[0].Role)
 	require.NotNil(t, got.Messages[0].ReasoningContent)
 	assert.Equal(t, "standalone reasoning", *got.Messages[0].ReasoningContent)
+	require.True(t, got.Messages[0].IsStringContent())
+	assert.Empty(t, got.Messages[0].StringContent())
+
+	body, err := common.Marshal(got)
+	require.NoError(t, err)
+	assert.Equal(t, gjson.String, gjson.GetBytes(body, "messages.0.content").Type)
+}
+
+func TestResponsesRequestToChatCompletionsRequestReasoningBeforeUserStaysValidAndOrdered(t *testing.T) {
+	input := []map[string]any{
+		{
+			"type": "reasoning",
+			"summary": []map[string]any{
+				{"type": "summary_text", "text": "previous turn reasoning"},
+			},
+		},
+		{
+			"type":    "message",
+			"role":    "user",
+			"content": "next question",
+		},
+	}
+
+	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, input),
+	})
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 2)
+
+	assert.Equal(t, "assistant", got.Messages[0].Role)
+	require.NotNil(t, got.Messages[0].ReasoningContent)
+	assert.Equal(t, "previous turn reasoning", *got.Messages[0].ReasoningContent)
+	require.True(t, got.Messages[0].IsStringContent())
+	assert.Empty(t, got.Messages[0].StringContent())
+
+	assert.Equal(t, "user", got.Messages[1].Role)
+	assert.Equal(t, "next question", got.Messages[1].StringContent())
+
+	body, err := common.Marshal(got)
+	require.NoError(t, err)
+	assert.Equal(t, gjson.String, gjson.GetBytes(body, "messages.0.content").Type)
 }
