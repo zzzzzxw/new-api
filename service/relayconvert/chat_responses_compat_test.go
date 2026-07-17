@@ -434,6 +434,71 @@ func TestResponsesStreamEventToChatChunksUsesTerminalDoneOutput(t *testing.T) {
 	assert.Equal(t, "tool_calls", *chunks[3].Choices[0].FinishReason)
 }
 
+func TestResponsesStreamEventToChatChunksRecoversTextFromDoneItemWhenCompletedOutputIsEmpty(t *testing.T) {
+	state := newTestResponsesStreamState()
+
+	chunks := mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type: responsesEventOutputItemDone,
+		Item: &dto.ResponsesOutput{
+			Type: responsesOutputTypeMessage,
+			Role: "assistant",
+			Content: []dto.ResponsesOutputContent{
+				{Type: "output_text", Text: "scan project login pages"},
+			},
+		},
+	})
+	chunks = append(chunks, mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type: responsesEventCompleted,
+		Response: &dto.OpenAIResponsesResponse{
+			Status: []byte(`"completed"`),
+			Output: []dto.ResponsesOutput{},
+			Usage:  &dto.Usage{InputTokens: 386, OutputTokens: 15, TotalTokens: 401},
+		},
+	})...)
+
+	require.Len(t, chunks, 3)
+	assert.Equal(t, "assistant", chunks[0].Choices[0].Delta.Role)
+	assert.Equal(t, "scan project login pages", chunks[1].Choices[0].Delta.GetContentString())
+	require.NotNil(t, chunks[2].Choices[0].FinishReason)
+	assert.Equal(t, "stop", *chunks[2].Choices[0].FinishReason)
+	assert.Equal(t, 401, state.Usage.TotalTokens)
+}
+
+func TestResponsesStreamEventToChatChunksDoneEventsOnlyAppendMissingText(t *testing.T) {
+	state := newTestResponsesStreamState()
+
+	chunks := mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type:  responsesEventOutputTextDelta,
+		Delta: "scan project",
+	})
+	chunks = append(chunks, mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type: responsesEventOutputTextDone,
+		Text: "scan project login pages",
+	})...)
+	chunks = append(chunks, mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type: responsesEventContentPartDone,
+		Part: &dto.ResponsesReasoningSummaryPart{
+			Type: "output_text",
+			Text: "scan project login pages",
+		},
+	})...)
+	chunks = append(chunks, mustStreamChunks(t, state, &dto.ResponsesStreamResponse{
+		Type: responsesEventOutputItemDone,
+		Item: &dto.ResponsesOutput{
+			Type: responsesOutputTypeMessage,
+			Role: "assistant",
+			Content: []dto.ResponsesOutputContent{
+				{Type: "output_text", Text: "scan project login pages"},
+			},
+		},
+	})...)
+
+	require.Len(t, chunks, 3)
+	assert.Equal(t, "assistant", chunks[0].Choices[0].Delta.Role)
+	assert.Equal(t, "scan project", chunks[1].Choices[0].Delta.GetContentString())
+	assert.Equal(t, " login pages", chunks[2].Choices[0].Delta.GetContentString())
+}
+
 func TestFinalizeResponsesToChatStreamFlushesPendingDeltaOnlyArguments(t *testing.T) {
 	state := newTestResponsesStreamState()
 	outputIndex := 2
@@ -490,6 +555,38 @@ func TestResponsesBufferedAccumulatorSupplementsEmptyTerminalOutput(t *testing.T
 	toolCalls := chat.Choices[0].Message.ParseToolCalls()
 	require.Len(t, toolCalls, 1)
 	assert.Equal(t, `{"q":"x"}`, toolCalls[0].Function.Arguments)
+}
+
+func TestResponsesBufferedAccumulatorRecoversDoneOnlyTextWithoutDuplication(t *testing.T) {
+	acc := NewResponsesBufferedAccumulator()
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type:  responsesEventOutputTextDelta,
+		Delta: "scan project",
+	})
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type: responsesEventOutputTextDone,
+		Text: "scan project login pages",
+	})
+	acc.ProcessEvent(&dto.ResponsesStreamResponse{
+		Type: responsesEventOutputItemDone,
+		Item: &dto.ResponsesOutput{
+			Type: responsesOutputTypeMessage,
+			Role: "assistant",
+			Content: []dto.ResponsesOutputContent{
+				{Type: "output_text", Text: "scan project login pages"},
+			},
+		},
+	})
+
+	resp := &dto.OpenAIResponsesResponse{
+		Status: []byte(`"completed"`),
+		Usage:  &dto.Usage{InputTokens: 386, OutputTokens: 15, TotalTokens: 401},
+	}
+	acc.SupplementResponseOutput(resp)
+
+	chat, _, err := ResponsesResponseToChatCompletionsResponse(resp, "chatcmpl_1")
+	require.NoError(t, err)
+	assert.Equal(t, "scan project login pages", chat.Choices[0].Message.StringContent())
 }
 
 func TestResponsesBufferedAccumulatorPreservesToolNamespace(t *testing.T) {
