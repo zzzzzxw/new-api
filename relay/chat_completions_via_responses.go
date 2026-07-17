@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) {
@@ -147,7 +148,7 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 
 	httpResp = resp.(*http.Response)
 	clientStream := info.IsStream
-	upstreamStream := shouldHandleResponsesAsStream(clientStream, httpResp.Header.Get("Content-Type"))
+	upstreamStream := shouldHandleResponsesUpstreamAsStream(info.ApiType, clientStream, httpResp.Header.Get("Content-Type"))
 	info.IsStream = clientStream || upstreamStream
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
@@ -190,4 +191,20 @@ func shouldHandleResponsesAsStream(clientStream bool, contentType string) bool {
 		return true
 	}
 	return isResponsesEventStreamContentType(contentType)
+}
+
+func shouldHandleResponsesUpstreamAsStream(apiType int, clientStream bool, contentType string) bool {
+	if apiType == constant.APITypeCodex {
+		return true
+	}
+	return shouldHandleResponsesAsStream(clientStream, contentType)
+}
+
+func forceCodexResponsesStream(jsonData []byte, info *relaycommon.RelayInfo) ([]byte, error) {
+	if info == nil ||
+		info.ApiType != constant.APITypeCodex ||
+		info.RelayMode != relayconstant.RelayModeResponses {
+		return jsonData, nil
+	}
+	return sjson.SetBytes(jsonData, "stream", true)
 }

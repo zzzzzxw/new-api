@@ -35,17 +35,45 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	// 写入新的 response body
+	service.IOCopyBytesGracefully(c, resp, responseBody)
+
+	return collectResponsesUsage(c, info, &responsesResponse), nil
+}
+
+func OaiResponsesBufferedStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	if resp == nil || resp.Body == nil {
+		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	defer service.CloseResponseBodyGracefully(resp)
+
+	responsesResponse, streamErr := bufferResponsesStream(c, info, resp)
+	if streamErr != nil {
+		return nil, streamErr
+	}
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	responseBody, err := common.Marshal(responsesResponse)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+	}
+	copyResponsesJSON(c, resp, responseBody)
+
+	return collectResponsesUsage(c, info, responsesResponse), nil
+}
+
+func collectResponsesUsage(c *gin.Context, info *relaycommon.RelayInfo, responsesResponse *dto.OpenAIResponsesResponse) *dto.Usage {
+	usage := dto.Usage{}
+	if responsesResponse == nil {
+		return &usage
+	}
 	if responsesResponse.HasImageGenerationCall() {
 		c.Set("image_generation_call", true)
 		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
 		c.Set("image_generation_call_size", responsesResponse.GetSize())
 	}
-
-	// 写入新的 response body
-	service.IOCopyBytesGracefully(c, resp, responseBody)
-
-	// compute usage
-	usage := dto.Usage{}
 	if responsesResponse.Usage != nil {
 		usage.PromptTokens = responsesResponse.Usage.InputTokens
 		usage.CompletionTokens = responsesResponse.Usage.OutputTokens
@@ -55,7 +83,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 	}
 	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
-		return &usage, nil
+		return &usage
 	}
 	// 解析 Tools 用量
 	for _, tool := range responsesResponse.Tools {
@@ -66,7 +94,21 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 		buildToolinfo.CallCount++
 	}
-	return &usage, nil
+	return &usage
+}
+
+func copyResponsesJSON(c *gin.Context, resp *http.Response, responseBody []byte) {
+	if resp == nil {
+		service.IOCopyBytesGracefully(c, nil, responseBody)
+		return
+	}
+	jsonResp := *resp
+	jsonResp.Header = resp.Header.Clone()
+	if jsonResp.Header == nil {
+		jsonResp.Header = make(http.Header)
+	}
+	jsonResp.Header.Set("Content-Type", "application/json")
+	service.IOCopyBytesGracefully(c, &jsonResp, responseBody)
 }
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {

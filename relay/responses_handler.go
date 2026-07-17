@@ -90,6 +90,13 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
+		jsonData, err = forceCodexResponsesStream(jsonData, info)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		if info.ApiType == appconstant.APITypeCodex && info.RelayMode == relayconstant.RelayModeResponses {
+			info.SetUpstreamRequestParametersFromJSON(jsonData)
+		}
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -98,7 +105,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		jsonData = nil
 		info.UpstreamRequestBodySize = size
 		requestBody = body
-		info.CopyRequestParametersToUpstream()
+		if info.ApiType != appconstant.APITypeCodex || info.RelayMode != relayconstant.RelayModeResponses {
+			info.CopyRequestParametersToUpstream()
+		}
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -124,6 +133,10 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			}
 		}
 		jsonData, err = sanitizeConvertedResponsesChatRequestJSON(convertedRequest, jsonData)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+		jsonData, err = forceCodexResponsesStream(jsonData, info)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}

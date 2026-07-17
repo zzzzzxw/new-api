@@ -79,6 +79,42 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 	}
 	defer service.CloseResponseBodyGracefully(resp)
 
+	finalResponse, streamErr := bufferResponsesStream(c, info, resp)
+	if streamErr != nil {
+		return nil, streamErr
+	}
+
+	chatId := helper.GetResponseID(c)
+	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(finalResponse, chatId)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if usage == nil || usage.TotalTokens == 0 {
+		text := service.ExtractOutputTextFromResponses(finalResponse)
+		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
+		chatResp.Usage = *usage
+	}
+
+	var responseBody []byte
+	switch info.RelayFormat {
+	case types.RelayFormatClaude:
+		claudeResp := service.ResponseOpenAI2Claude(chatResp, info)
+		responseBody, err = common.Marshal(claudeResp)
+	case types.RelayFormatGemini:
+		geminiResp := service.ResponseOpenAI2Gemini(chatResp, info)
+		responseBody, err = common.Marshal(geminiResp)
+	default:
+		responseBody, err = common.Marshal(chatResp)
+	}
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+	}
+
+	copyResponsesJSON(c, resp, responseBody)
+	return usage, nil
+}
+
+func bufferResponsesStream(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.OpenAIResponsesResponse, *types.NewAPIError) {
 	accumulator := relayconvert.NewResponsesBufferedAccumulator()
 	var finalResponse *dto.OpenAIResponsesResponse
 	var streamErr *types.NewAPIError
@@ -152,35 +188,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 	} else {
 		info.SetUpstreamResponseParametersFromValue(finalResponse)
 	}
-
-	chatId := helper.GetResponseID(c)
-	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(finalResponse, chatId)
-	if err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
-	}
-	if usage == nil || usage.TotalTokens == 0 {
-		text := service.ExtractOutputTextFromResponses(finalResponse)
-		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
-		chatResp.Usage = *usage
-	}
-
-	var responseBody []byte
-	switch info.RelayFormat {
-	case types.RelayFormatClaude:
-		claudeResp := service.ResponseOpenAI2Claude(chatResp, info)
-		responseBody, err = common.Marshal(claudeResp)
-	case types.RelayFormatGemini:
-		geminiResp := service.ResponseOpenAI2Gemini(chatResp, info)
-		responseBody, err = common.Marshal(geminiResp)
-	default:
-		responseBody, err = common.Marshal(chatResp)
-	}
-	if err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
-	}
-
-	service.IOCopyBytesGracefully(c, resp, responseBody)
-	return usage, nil
+	return finalResponse, nil
 }
 
 func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {

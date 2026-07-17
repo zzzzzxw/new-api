@@ -79,12 +79,36 @@ func TestResponsesRequestToChatCompletionsRequestMultimodalInput(t *testing.T) {
 	assert.Equal(t, "look", parts[0].Text)
 	assert.Equal(t, dto.ContentTypeImageURL, parts[1].Type)
 	assert.Equal(t, "https://example.test/a.png", parts[1].GetImageMedia().Url)
+	assert.Equal(t, "low", parts[1].GetImageMedia().Detail)
 	assert.Equal(t, dto.ContentTypeFile, parts[2].Type)
 	assert.Equal(t, "file_1", parts[2].GetFile().FileId)
 	assert.Equal(t, dto.ContentTypeInputAudio, parts[3].Type)
 	assert.Equal(t, "wav", parts[3].GetInputAudio().Format)
 	assert.Equal(t, dto.ContentTypeVideoUrl, parts[4].Type)
 	assert.Equal(t, "https://example.test/v.mp4", parts[4].GetVideoUrl().Url)
+
+	body, err := common.Marshal(got)
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.test/a.png", gjson.GetBytes(body, "messages.0.content.1.image_url.url").String())
+	assert.Equal(t, "low", gjson.GetBytes(body, "messages.0.content.1.image_url.detail").String())
+}
+
+func TestResponsesRequestToChatCompletionsRequestRejectsImageFileID(t *testing.T) {
+	_, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "input_text", "text": "look"},
+					{"type": "input_image", "file_id": "file_image_1"},
+				},
+			},
+		}),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file_image_1")
+	assert.Contains(t, err.Error(), "cannot be forwarded to Chat Completions")
 }
 
 func TestResponsesRequestToChatCompletionsRequestAssistantTextAndFunctionCallCoexist(t *testing.T) {

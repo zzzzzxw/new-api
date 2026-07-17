@@ -99,6 +99,10 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if isCompact {
 		return request, nil
 	}
+	// The Codex backend only supports streaming Responses requests. Keep
+	// info.IsStream as the client-facing mode and force streaming only in the
+	// upstream payload so non-streaming clients can receive buffered JSON.
+	request.Stream = common.GetPointer(true)
 	// codex: store must be false
 	request.Store = json.RawMessage("false")
 	// rm max_output_tokens
@@ -123,7 +127,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	if info.IsStream {
 		return openai.OaiResponsesStreamHandler(c, info, resp)
 	}
-	return openai.OaiResponsesHandler(c, info, resp)
+	return openai.OaiResponsesBufferedStreamHandler(c, info, resp)
 }
 
 func (a *Adaptor) GetModelList() []string {
@@ -182,7 +186,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	// Clients may omit it or include parameters like `application/json; charset=utf-8`,
 	// which can be rejected by the upstream. Force the exact media type.
 	req.Set("Content-Type", "application/json")
-	if info.IsStream {
+	if info.RelayMode == relayconstant.RelayModeResponses {
 		req.Set("Accept", "text/event-stream")
 	} else if req.Get("Accept") == "" {
 		req.Set("Accept", "application/json")
@@ -190,4 +194,3 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 
 	return nil
 }
-

@@ -358,9 +358,13 @@ func responsesContentPartsToChatContent(parts []any) (any, error) {
 			})
 		case "input_image":
 			onlyText = false
+			imageURL, err := responsesImagePartToChatImageURL(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid input_image: %w", err)
+			}
 			chatParts = append(chatParts, map[string]any{
 				"type":      dto.ContentTypeImageURL,
-				"image_url": responsesImagePartToChatImageURL(part),
+				"image_url": imageURL,
 			})
 		case "input_file":
 			onlyText = false
@@ -926,20 +930,37 @@ func responsesRequestTextToChatResponseFormat(raw json.RawMessage) (*dto.Respons
 	return out, nil
 }
 
-func responsesImagePartToChatImageURL(part map[string]any) any {
-	if imageURL, ok := part["image_url"]; ok {
-		return imageURL
-	}
+func responsesImagePartToChatImageURL(part map[string]any) (map[string]any, error) {
 	imageURL := map[string]any{}
-	for _, key := range []string{"url", "file_id", "detail"} {
-		if value, ok := part[key]; ok {
-			imageURL[key] = value
+	switch value := part["image_url"].(type) {
+	case string:
+		if strings.TrimSpace(value) != "" {
+			imageURL["url"] = value
+		}
+	case map[string]any:
+		for key, nestedValue := range value {
+			imageURL[key] = nestedValue
 		}
 	}
-	if len(imageURL) == 0 {
-		return part
+
+	if _, ok := imageURL["url"]; !ok {
+		if url := strings.TrimSpace(common.Interface2String(part["url"])); url != "" {
+			imageURL["url"] = url
+		}
 	}
-	return imageURL
+	if _, ok := imageURL["detail"]; !ok {
+		if detail := strings.TrimSpace(common.Interface2String(part["detail"])); detail != "" {
+			imageURL["detail"] = detail
+		}
+	}
+
+	if strings.TrimSpace(common.Interface2String(imageURL["url"])) == "" {
+		if fileID := strings.TrimSpace(common.Interface2String(part["file_id"])); fileID != "" {
+			return nil, fmt.Errorf("file_id %q cannot be forwarded to Chat Completions as an image URL", fileID)
+		}
+		return nil, errors.New("image_url is required for Chat Completions compatibility")
+	}
+	return imageURL, nil
 }
 
 func responsesFilePartToChatFile(part map[string]any) any {
