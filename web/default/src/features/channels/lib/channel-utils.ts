@@ -87,6 +87,7 @@ export function getChannelTypeIcon(type: number): string {
     42: 'Mistral', // Mistral
     43: 'DeepSeek', // DeepSeek
     48: 'XAI', // xAI
+    59: 'XAI', // Grok Subscription
     49: 'Coze', // Coze
     40: 'SiliconCloud', // SiliconFlow
     44: 'OpenAI', // MokaAI

@@ -5037,6 +5037,22 @@
     "Zhipu Account & Usage": "Compte et utilisation Zhipu",
     "Zhipu Account Status": "État du compte Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Grok Subscription (Build)": "Grok Subscription (Build)",
+    "Authorize with xAI": "Authorize with xAI",
+    "Opening...": "Opening...",
+    "Exchanging...": "Exchanging...",
+    "Failed to start xAI authorization": "Failed to start xAI authorization",
+    "xAI authorization page opened": "xAI authorization page opened",
+    "Paste the callback URL or authorization code first": "Paste the callback URL or authorization code first",
+    "Failed to complete xAI authorization": "Failed to complete xAI authorization",
+    "Grok OAuth credential obtained": "Grok OAuth credential obtained",
+    "Grok Subscription channels use an xAI OAuth JSON credential as the key.": "Grok Subscription channels use an xAI OAuth JSON credential as the key.",
+    "After authorizing, the browser may show that localhost refused the connection. Copy the full callback URL from the address bar and paste it below.": "After authorizing, the browser may show that localhost refused the connection. Copy the full callback URL from the address bar and paste it below.",
+    "Paste callback URL or authorization code": "Paste callback URL or authorization code",
+    "Complete authorization": "Complete authorization",
+    "Reopen authorization page": "Reopen authorization page",
+    "Authorize with xAI below, or paste a Grok OAuth JSON credential": "Authorize with xAI below, or paste a Grok OAuth JSON credential",
+    "Disclaimer: This integration uses the Grok Build subscription OAuth entitlement and an unofficial compatibility path. Use it only for your own account, do not share credentials, and make sure your usage complies with xAI's terms and policies. xAI may change or disable this flow at any time.": "Disclaimer: This integration uses the Grok Build subscription OAuth entitlement and an unofficial compatibility path. Use it only for your own account, do not share credentials, and make sure your usage complies with xAI's terms and policies. xAI may change or disable this flow at any time."
   }
 }

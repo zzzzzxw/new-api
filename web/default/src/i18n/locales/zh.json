@@ -5037,6 +5037,22 @@
     "Zhipu Account & Usage": "智谱账号与用量",
     "Zhipu Account Status": "智谱账号状态",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Grok Subscription (Build)": "Grok 订阅（Build）",
+    "Authorize with xAI": "使用 xAI 授权",
+    "Opening...": "正在打开...",
+    "Exchanging...": "正在交换凭证...",
+    "Failed to start xAI authorization": "无法启动 xAI 授权",
+    "xAI authorization page opened": "已打开 xAI 授权页面",
+    "Paste the callback URL or authorization code first": "请先粘贴回调 URL 或授权码",
+    "Failed to complete xAI authorization": "无法完成 xAI 授权",
+    "Grok OAuth credential obtained": "已获取 Grok OAuth 凭证",
+    "Grok Subscription channels use an xAI OAuth JSON credential as the key.": "Grok 订阅渠道使用 xAI OAuth JSON 凭证作为密钥。",
+    "After authorizing, the browser may show that localhost refused the connection. Copy the full callback URL from the address bar and paste it below.": "授权后，浏览器可能显示 localhost 拒绝连接。这是正常现象，请从地址栏复制完整的回调 URL 并粘贴到下方。",
+    "Paste callback URL or authorization code": "粘贴回调 URL 或授权码",
+    "Complete authorization": "完成授权",
+    "Reopen authorization page": "重新打开授权页面",
+    "Authorize with xAI below, or paste a Grok OAuth JSON credential": "在下方使用 xAI 授权，或粘贴 Grok OAuth JSON 凭证",
+    "Disclaimer: This integration uses the Grok Build subscription OAuth entitlement and an unofficial compatibility path. Use it only for your own account, do not share credentials, and make sure your usage complies with xAI's terms and policies. xAI may change or disable this flow at any time.": "免责声明：此集成使用 Grok Build 订阅 OAuth 权益和非官方兼容路径。仅限您自己的账号使用，请勿共享凭证，并确保遵守 xAI 的条款和政策。xAI 可能随时更改或停用此流程。"
   }
 }

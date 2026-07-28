@@ -256,6 +256,16 @@ var defaultModelRatio = map[string]float64{
 	"grok-vision-beta":      2.5,
 	"grok-3-fast-beta":      2.5,
 	"grok-3-mini-fast-beta": 0.3,
+	// Grok subscription models do not expose public per-token billing.
+	// Use a neutral default ratio so self-hosted channels work out of the box;
+	// operators can override these values in the pricing settings.
+	"grok-4.5":                     1,
+	"grok-4.3":                     1,
+	"grok-build-0.1":               1,
+	"grok-composer-2.5-fast":       1,
+	"grok-4.20-0309-reasoning":     1,
+	"grok-4.20-0309-non-reasoning": 1,
+	"grok-4.20-multi-agent-0309":   1,
 	// submodel
 	"NousResearch/Hermes-4-405B-FP8":          0.8,
 	"Qwen/Qwen3-235B-A22B-Thinking-2507":      0.6,

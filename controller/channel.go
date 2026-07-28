@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
+	"github.com/QuantumNous/new-api/relay/channel/groksubscription"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
@@ -198,6 +199,18 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	switch channel.Type {
 	case constant.ChannelTypeAnthropic:
 		headers = GetClaudeAuthHeader(key)
+	case constant.ChannelTypeGrokSubscription:
+		oauthKey, err := groksubscription.ParseOAuthKey(key)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(oauthKey.AccessToken) == "" {
+			return nil, fmt.Errorf("grok subscription credential must include access_token")
+		}
+		headers = GetAuthHeader(strings.TrimSpace(oauthKey.AccessToken))
+		headers.Set("User-Agent", groksubscription.GrokUserAgent)
+		headers.Set("X-Grok-Client-Version", groksubscription.GrokCLIVersion())
+		headers.Set("X-Grok-Client-Mode", "interactive")
 	default:
 		headers = GetAuthHeader(key)
 	}
@@ -516,6 +529,19 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 			}
 			if v, ok := keyMap["account_id"]; !ok || v == nil || strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
 				return fmt.Errorf("Codex key JSON must include account_id")
+			}
+		}
+	}
+
+	if channel.Type == constant.ChannelTypeGrokSubscription {
+		trimmedKey := strings.TrimSpace(channel.Key)
+		if isAdd || trimmedKey != "" {
+			oauthKey, err := groksubscription.ParseOAuthKey(trimmedKey)
+			if err != nil {
+				return fmt.Errorf("Grok Subscription key must be a valid OAuth JSON object")
+			}
+			if strings.TrimSpace(oauthKey.AccessToken) == "" {
+				return fmt.Errorf("Grok Subscription key JSON must include access_token")
 			}
 		}
 	}
@@ -1178,7 +1204,9 @@ func FetchModels(c *gin.Context) {
 
 	// remove line breaks and extra spaces.
 	key := strings.TrimSpace(req.Key)
-	key = strings.Split(key, "\n")[0]
+	if req.Type != constant.ChannelTypeGrokSubscription {
+		key = strings.Split(key, "\n")[0]
+	}
 
 	if req.Type == constant.ChannelTypeOllama {
 		models, err := ollama.FetchOllamaModels(baseURL, key)
@@ -1231,7 +1259,19 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	request.Header.Set("Authorization", "Bearer "+key)
+	if req.Type == constant.ChannelTypeGrokSubscription {
+		oauthKey, parseErr := groksubscription.ParseOAuthKey(key)
+		if parseErr != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": parseErr.Error()})
+			return
+		}
+		request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(oauthKey.AccessToken))
+		request.Header.Set("User-Agent", groksubscription.GrokUserAgent)
+		request.Header.Set("X-Grok-Client-Version", groksubscription.GrokCLIVersion())
+		request.Header.Set("X-Grok-Client-Mode", "interactive")
+	} else {
+		request.Header.Set("Authorization", "Bearer "+key)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {

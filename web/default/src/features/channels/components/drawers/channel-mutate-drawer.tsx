@@ -44,6 +44,7 @@ import {
   Eraser,
   Plus,
   Eye,
+  ExternalLink,
   RefreshCw,
   Code,
   Route,
@@ -121,13 +122,16 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  exchangeGrokOAuthAuthorization,
   fetchModels,
+  generateGrokOAuthAuthorization,
   getAllModels,
   getChannel,
   getChannelKey,
   getGroups,
   getPrefillGroups,
   refreshCodexCredential,
+  refreshGrokSubscriptionCredential,
 } from '../../api'
 import {
   ADD_MODE_OPTIONS,
@@ -137,6 +141,7 @@ import {
   ERROR_MESSAGES,
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
+  GROK_SUBSCRIPTION_DEFAULT_MODELS,
   MODEL_FETCHABLE_TYPES,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
@@ -600,6 +605,16 @@ export function ChannelMutateDrawer({
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
   const [isCodexCredentialRefreshing, setIsCodexCredentialRefreshing] =
     useState(false)
+  const [isGrokCredentialRefreshing, setIsGrokCredentialRefreshing] =
+    useState(false)
+  const [isGrokOAuthStarting, setIsGrokOAuthStarting] = useState(false)
+  const [isGrokOAuthExchanging, setIsGrokOAuthExchanging] = useState(false)
+  const [grokOAuthCallback, setGrokOAuthCallback] = useState('')
+  const [grokOAuthSession, setGrokOAuthSession] = useState<{
+    sessionId: string
+    state: string
+    authorizationUrl: string
+  } | null>(null)
   const initialModelsRef = useRef<string[]>([])
   const initialModelMappingRef = useRef<string>('')
   const initialStatusCodeMappingRef = useRef<string>('')
@@ -761,12 +776,20 @@ export function ChannelMutateDrawer({
     }
   }, [open, resetDoubaoApiUnlock])
 
+  useEffect(() => {
+    if (!open || currentType !== 59) {
+      setGrokOAuthCallback('')
+      setGrokOAuthSession(null)
+    }
+  }, [currentType, open])
+
   // Helper computed values
   const isBatchMode =
     multiKeyMode === 'batch' || multiKeyMode === 'multi_to_single'
   const isChannelDetailLoading = isEditing && isChannelLoading
   const supportsMultiKeyAddMode =
-    currentType !== 57 && !(currentType === 41 && vertexKeyType === 'api_key')
+    ![57, 59].includes(currentType) &&
+    !(currentType === 41 && vertexKeyType === 'api_key')
   const addModeOptions = useMemo(
     () =>
       supportsMultiKeyAddMode
@@ -1206,6 +1229,10 @@ export function ChannelMutateDrawer({
         form.setValue('other', 'v2.1')
       }
     }
+
+    if (currentType === 59 && !form.getValues('models')?.trim()) {
+      form.setValue('models', GROK_SUBSCRIPTION_DEFAULT_MODELS.join(','))
+    }
   }, [currentType, isEditing, form])
 
   useEffect(() => {
@@ -1326,6 +1353,99 @@ export function ChannelMutateDrawer({
       toast.error(error instanceof Error ? error.message : t('Refresh failed'))
     } finally {
       setIsCodexCredentialRefreshing(false)
+    }
+  }, [channelId, queryClient, t])
+
+  const handleStartGrokOAuth = useCallback(async () => {
+    const authWindow = window.open('about:blank', '_blank')
+    if (authWindow) {
+      authWindow.opener = null
+    }
+    setIsGrokOAuthStarting(true)
+    try {
+      const res = await generateGrokOAuthAuthorization()
+      if (!res.success || !res.data) {
+        throw new Error(res.message || t('Failed to start xAI authorization'))
+      }
+      setGrokOAuthSession({
+        sessionId: res.data.session_id,
+        state: res.data.state,
+        authorizationUrl: res.data.authorization_url,
+      })
+      if (authWindow) {
+        authWindow.location.href = res.data.authorization_url
+      } else {
+        window.open(res.data.authorization_url, '_blank', 'noopener,noreferrer')
+      }
+      toast.success(t('xAI authorization page opened'))
+    } catch (error) {
+      authWindow?.close()
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to start xAI authorization')
+      )
+    } finally {
+      setIsGrokOAuthStarting(false)
+    }
+  }, [t])
+
+  const handleCompleteGrokOAuth = useCallback(async () => {
+    if (!grokOAuthSession || !grokOAuthCallback.trim()) {
+      toast.error(t('Paste the callback URL or authorization code first'))
+      return
+    }
+    setIsGrokOAuthExchanging(true)
+    try {
+      const res = await exchangeGrokOAuthAuthorization({
+        session_id: grokOAuthSession.sessionId,
+        callback: grokOAuthCallback.trim(),
+        state: grokOAuthSession.state,
+        proxy: form.getValues('proxy')?.trim() || undefined,
+      })
+      if (!res.success || !res.data?.credential) {
+        throw new Error(res.message || t('Failed to complete xAI authorization'))
+      }
+      form.setValue('key', res.data.credential, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      if (res.data.models?.length) {
+        form.setValue('models', formatModelsArray(res.data.models), {
+          shouldDirty: true,
+          shouldValidate: true,
+        })
+      }
+      setGrokOAuthCallback('')
+      setGrokOAuthSession(null)
+      toast.success(t('Grok OAuth credential obtained'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to complete xAI authorization')
+      )
+    } finally {
+      setIsGrokOAuthExchanging(false)
+    }
+  }, [form, grokOAuthCallback, grokOAuthSession, t])
+
+  const handleRefreshGrokCredential = useCallback(async () => {
+    if (!channelId) return
+    setIsGrokCredentialRefreshing(true)
+    try {
+      const res = await refreshGrokSubscriptionCredential(channelId)
+      if (!res.success) {
+        throw new Error(res.message || t('Failed to refresh credential'))
+      }
+      toast.success(t('Credential refreshed'))
+      queryClient.invalidateQueries({
+        queryKey: channelsQueryKeys.detail(channelId),
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('Refresh failed'))
+    } finally {
+      setIsGrokCredentialRefreshing(false)
     }
   }, [channelId, queryClient, t])
 
@@ -2973,6 +3093,129 @@ export function ChannelMutateDrawer({
                                     <AlertDescription>
                                       {t(
                                         "Disclaimer: Personal use only. Do not distribute or share any credentials. This channel has prerequisites and requires prior setup; use it only if you understand the flow and risks, and comply with OpenAI's terms and policies. Credentials and configuration are for Codex CLI integration only, and are not intended for any other client, platform, or channel."
+                                      )}
+                                    </AlertDescription>
+                                  </Alert>
+                                </div>
+                              )}
+
+                              {currentType === 59 && (
+                                <div className='border-border/60 flex flex-col gap-3 border-y py-4'>
+                                  <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                                    <div className='text-muted-foreground text-xs'>
+                                      {t(
+                                        'Grok Subscription channels use an xAI OAuth JSON credential as the key.'
+                                      )}
+                                    </div>
+                                    <div className='flex flex-wrap items-center gap-2'>
+                                      <Button
+                                        type='button'
+                                        variant='outline'
+                                        size='sm'
+                                        onClick={handleStartGrokOAuth}
+                                        disabled={
+                                          sensitiveLocked ||
+                                          isGrokOAuthStarting ||
+                                          isGrokOAuthExchanging
+                                        }
+                                      >
+                                        {isGrokOAuthStarting ? (
+                                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                                        ) : (
+                                          <ExternalLink className='mr-2 h-4 w-4' />
+                                        )}
+                                        {isGrokOAuthStarting
+                                          ? t('Opening...')
+                                          : t('Authorize with xAI')}
+                                      </Button>
+                                      {isEditing && channelId && (
+                                        <Button
+                                          type='button'
+                                          variant='outline'
+                                          size='sm'
+                                          onClick={handleRefreshGrokCredential}
+                                          disabled={
+                                            sensitiveLocked ||
+                                            isGrokCredentialRefreshing
+                                          }
+                                        >
+                                          {isGrokCredentialRefreshing ? (
+                                            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                                          ) : (
+                                            <RefreshCw className='mr-2 h-4 w-4' />
+                                          )}
+                                          {isGrokCredentialRefreshing
+                                            ? t('Refreshing...')
+                                            : t('Refresh credential')}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {grokOAuthSession && (
+                                    <div className='bg-muted/30 flex flex-col gap-2 rounded-md border p-3'>
+                                      <p className='text-muted-foreground text-xs'>
+                                        {t(
+                                          'After authorizing, the browser may show that localhost refused the connection. Copy the full callback URL from the address bar and paste it below.'
+                                        )}
+                                      </p>
+                                      <Input
+                                        value={grokOAuthCallback}
+                                        onChange={(event) =>
+                                          setGrokOAuthCallback(
+                                            event.target.value
+                                          )
+                                        }
+                                        placeholder={t(
+                                          'Paste callback URL or authorization code'
+                                        )}
+                                        disabled={
+                                          sensitiveLocked ||
+                                          isGrokOAuthExchanging
+                                        }
+                                        className='font-mono text-xs'
+                                      />
+                                      <div className='flex flex-wrap gap-2'>
+                                        <Button
+                                          type='button'
+                                          size='sm'
+                                          onClick={handleCompleteGrokOAuth}
+                                          disabled={
+                                            sensitiveLocked ||
+                                            isGrokOAuthExchanging ||
+                                            !grokOAuthCallback.trim()
+                                          }
+                                        >
+                                          {isGrokOAuthExchanging && (
+                                            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                                          )}
+                                          {isGrokOAuthExchanging
+                                            ? t('Exchanging...')
+                                            : t('Complete authorization')}
+                                        </Button>
+                                        <Button
+                                          type='button'
+                                          variant='ghost'
+                                          size='sm'
+                                          onClick={() =>
+                                            window.open(
+                                              grokOAuthSession.authorizationUrl,
+                                              '_blank',
+                                              'noopener,noreferrer'
+                                            )
+                                          }
+                                        >
+                                          <ExternalLink className='mr-2 h-4 w-4' />
+                                          {t('Reopen authorization page')}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
+                                    <AlertDescription>
+                                      {t(
+                                        "Disclaimer: This integration uses the Grok Build subscription OAuth entitlement and an unofficial compatibility path. Use it only for your own account, do not share credentials, and make sure your usage complies with xAI's terms and policies. xAI may change or disable this flow at any time."
                                       )}
                                     </AlertDescription>
                                   </Alert>

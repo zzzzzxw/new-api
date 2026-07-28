@@ -98,6 +98,28 @@ export type CodexCredentialRefreshResponse = {
   }
 }
 
+export type GrokOAuthAuthorizationResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    authorization_url: string
+    session_id: string
+    state: string
+    redirect_uri: string
+  }
+}
+
+export type GrokOAuthExchangeResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    credential: string
+    email?: string
+    expires_at?: string
+    models: string[]
+  }
+}
+
 // ============================================================================
 // Base Channel CRUD Operations
 // ============================================================================
@@ -340,6 +362,40 @@ export async function refreshCodexCredential(
 ): Promise<CodexCredentialRefreshResponse> {
   const res = await api.post(
     `/api/channel/${channelId}/codex/refresh`,
+    {},
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function generateGrokOAuthAuthorization(): Promise<GrokOAuthAuthorizationResponse> {
+  const res = await api.post(
+    '/api/channel/grok_subscription/oauth/authorize',
+    {},
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function exchangeGrokOAuthAuthorization(data: {
+  session_id: string
+  callback: string
+  state?: string
+  proxy?: string
+}): Promise<GrokOAuthExchangeResponse> {
+  const res = await api.post(
+    '/api/channel/grok_subscription/oauth/exchange',
+    data,
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function refreshGrokSubscriptionCredential(
+  channelId: number
+): Promise<CodexCredentialRefreshResponse> {
+  const res = await api.post(
+    `/api/channel/${channelId}/grok_subscription/refresh`,
     {},
     channelActionConfig()
   )
