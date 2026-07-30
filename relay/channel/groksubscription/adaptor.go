@@ -163,17 +163,15 @@ func normalizeGrokInputAndTools(c *gin.Context, request *dto.OpenAIResponsesRequ
 			filteredTools = append(filteredTools, tool)
 		}
 	}
-	if len(tools) > 0 {
-		if len(filteredTools) == 0 {
-			request.Tools = nil
-			request.ToolChoice = nil
-		} else {
-			encoded, err := common.Marshal(filteredTools)
-			if err != nil {
-				return err
-			}
-			request.Tools = encoded
+	if len(filteredTools) == 0 {
+		request.Tools = nil
+		request.ToolChoice = nil
+	} else {
+		encoded, err := common.Marshal(filteredTools)
+		if err != nil {
+			return err
 		}
+		request.Tools = encoded
 	}
 	if len(request.ToolChoice) > 0 {
 		var choice map[string]any

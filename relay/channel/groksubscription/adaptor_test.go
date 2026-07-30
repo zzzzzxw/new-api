@@ -117,6 +117,39 @@ func TestConvertResponsesLowersCustomToolsAndHistory(t *testing.T) {
 	require.Equal(t, map[string]bool{"apply_patch": true}, customToolsFromContext(context))
 }
 
+func TestConvertResponsesDropsToolChoiceWhenToolsArrayIsEmpty(t *testing.T) {
+	tools, err := common.Marshal([]map[string]any{})
+	require.NoError(t, err)
+	toolChoice, err := common.Marshal("auto")
+	require.NoError(t, err)
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, dto.OpenAIResponsesRequest{
+		Model:      "grok-4.5",
+		Tools:      tools,
+		ToolChoice: toolChoice,
+	})
+	require.NoError(t, err)
+	normalized := converted.(dto.OpenAIResponsesRequest)
+
+	require.Empty(t, normalized.Tools)
+	require.Empty(t, normalized.ToolChoice)
+}
+
+func TestConvertResponsesDropsToolChoiceWhenToolsAreOmitted(t *testing.T) {
+	toolChoice, err := common.Marshal("auto")
+	require.NoError(t, err)
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, dto.OpenAIResponsesRequest{
+		Model:      "grok-4.5",
+		ToolChoice: toolChoice,
+	})
+	require.NoError(t, err)
+	normalized := converted.(dto.OpenAIResponsesRequest)
+
+	require.Empty(t, normalized.Tools)
+	require.Empty(t, normalized.ToolChoice)
+}
+
 func TestRestoreCustomToolPayload(t *testing.T) {
 	payload := []byte(`{"id":"resp-1","output":[{"type":"function_call","id":"item-1","call_id":"call-1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}]}`)
 	restored, err := restoreCustomToolPayload(payload, map[string]bool{"apply_patch": true})
