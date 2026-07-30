@@ -160,6 +160,33 @@ export function isMultiKeyChannel(channel: Channel): boolean {
   return channel.channel_info?.is_multi_key || false
 }
 
+export function isZhipuAccountInfoChannel(channel: Channel): boolean {
+  if (channel.type === 16 || channel.type === 26) {
+    return true
+  }
+
+  const rawBaseUrl = channel.base_url?.trim()
+  if (!rawBaseUrl) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(
+      rawBaseUrl.includes('://') ? rawBaseUrl : `https://${rawBaseUrl}`
+    )
+    const path = `/${parsed.pathname
+      .toLowerCase()
+      .replaceAll(/^\/+|\/+$/g, '')}`
+    return (
+      parsed.hostname.toLowerCase() === 'open.bigmodel.cn' &&
+      (path === '/api/coding/paas/v4' ||
+        path.startsWith('/api/coding/paas/v4/'))
+    )
+  } catch {
+    return false
+  }
+}
+
 // ============================================================================
 // Key Formatting
 // ============================================================================

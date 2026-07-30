@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
@@ -47,7 +46,7 @@ func GetZhipuChannelUsage(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel not found"})
 		return
 	}
-	if ch.Type != constant.ChannelTypeZhipu && ch.Type != constant.ChannelTypeZhipu_v4 {
+	if !isZhipuAccountInfoChannel(ch) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel type is not Zhipu"})
 		return
 	}

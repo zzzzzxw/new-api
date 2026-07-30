@@ -29,17 +29,20 @@ import { formatTimestampToDate } from '@/lib/format'
 
 import {
   getCodexUsage,
+  getGrokSubscriptionUsage,
   getZhipuUsage,
   updateChannelBalance,
+  type GrokUsageResponse,
   type ZhipuUsageRange,
   type ZhipuUsageResponse,
 } from '../../api'
-import { channelsQueryKeys } from '../../lib'
+import { channelsQueryKeys, isZhipuAccountInfoChannel } from '../../lib'
 import { useChannels } from '../channels-provider'
 import {
   CodexUsageDialog,
   type CodexUsageDialogData,
 } from './codex-usage-dialog'
+import { GrokUsageDialog } from './grok-usage-dialog'
 import { ZhipuUsageDialog } from './zhipu-usage-dialog'
 
 type BalanceQueryDialogProps = {
@@ -63,9 +66,12 @@ export function BalanceQueryDialog({
     useState<CodexUsageDialogData | null>(null)
   const [zhipuUsageResponse, setZhipuUsageResponse] =
     useState<ZhipuUsageResponse | null>(null)
+  const [grokUsageResponse, setGrokUsageResponse] =
+    useState<GrokUsageResponse | null>(null)
 
   const isCodex = currentRow?.type === 57
-  const isZhipu = currentRow?.type === 16 || currentRow?.type === 26
+  const isGrok = currentRow?.type === 59
+  const isZhipu = currentRow ? isZhipuAccountInfoChannel(currentRow) : false
 
   const handleQueryCodexUsage = async () => {
     const row = currentRow
@@ -105,6 +111,25 @@ export function BalanceQueryDialog({
     }
   }
 
+  const handleQueryGrokUsage = async () => {
+    const row = currentRow
+    if (!row) return
+    setIsQuerying(true)
+    try {
+      const res = await getGrokSubscriptionUsage(row.id)
+      if (!res.success) {
+        throw new Error(res.message || t('Failed to fetch usage'))
+      }
+      setGrokUsageResponse(res)
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to fetch usage')
+      )
+    } finally {
+      setIsQuerying(false)
+    }
+  }
+
   useEffect(() => {
     if (!isCodex) return
     if (!open) return
@@ -118,6 +143,13 @@ export function BalanceQueryDialog({
     handleQueryZhipuUsage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isZhipu])
+
+  useEffect(() => {
+    if (!isGrok) return
+    if (!open) return
+    handleQueryGrokUsage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isGrok])
 
   if (!currentRow) return null
 
@@ -161,6 +193,7 @@ export function BalanceQueryDialog({
     setBalanceUpdatedTime(null)
     setCodexUsageResponse(null)
     setZhipuUsageResponse(null)
+    setGrokUsageResponse(null)
     onOpenChange(false)
   }
 
@@ -208,6 +241,22 @@ export function BalanceQueryDialog({
     )
   }
 
+  if (isGrok) {
+    return (
+      <GrokUsageDialog
+        open={open}
+        onOpenChange={(v) => {
+          if (!v) handleClose()
+        }}
+        channelName={currentRow.name}
+        channelId={currentRow.id}
+        response={grokUsageResponse}
+        onRefresh={handleQueryGrokUsage}
+        isRefreshing={isQuerying}
+      />
+    )
+  }
+
   return (
     <Dialog
       open={open}
@@ -222,11 +271,9 @@ export function BalanceQueryDialog({
       contentHeight='auto'
       bodyClassName='space-y-4'
       footer={
-        <>
-          <Button variant='outline' onClick={handleClose} disabled={isQuerying}>
-            {t('Close')}
-          </Button>
-        </>
+        <Button variant='outline' onClick={handleClose} disabled={isQuerying}>
+          {t('Close')}
+        </Button>
       }
     >
       <div className='space-y-4 py-4'>

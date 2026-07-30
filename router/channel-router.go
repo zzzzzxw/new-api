@@ -64,6 +64,7 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/grok_subscription/oauth/authorize", permission: authz.ChannelSensitiveWrite, handler: controller.GenerateGrokSubscriptionAuthorization},
 	{method: http.MethodPost, path: "/grok_subscription/oauth/exchange", permission: authz.ChannelSensitiveWrite, handler: controller.ExchangeGrokSubscriptionAuthorization},
 	{method: http.MethodPost, path: "/:id/grok_subscription/refresh", permission: authz.ChannelSensitiveWrite, handler: controller.RefreshGrokSubscriptionChannelCredential},
+	{method: http.MethodGet, path: "/:id/grok_subscription/usage", permission: authz.ChannelRead, handler: controller.GetGrokSubscriptionChannelUsage},
 	{method: http.MethodGet, path: "/:id/codex/usage", permission: authz.ChannelRead, handler: controller.GetCodexChannelUsage},
 	{method: http.MethodGet, path: "/:id/codex/usage/reset-credits", permission: authz.ChannelRead, handler: controller.GetCodexChannelRateLimitResetCredits},
 	{method: http.MethodPost, path: "/:id/codex/usage/reset", permission: authz.ChannelOperate, handler: controller.ResetCodexChannelUsage},

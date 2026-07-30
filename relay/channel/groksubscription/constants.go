@@ -17,7 +17,7 @@ var ModelList = []string{
 
 const (
 	ChannelName           = "grok-subscription"
-	DefaultGrokCLIVersion = "0.2.93"
+	DefaultGrokCLIVersion = "0.2.114"
 	GrokUserAgent         = "new-api-grok/1.0"
 )
 

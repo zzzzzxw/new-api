@@ -54,7 +54,13 @@ import {
 import { formatTimestampToDate } from '@/lib/format'
 import { truncateText } from '@/lib/utils'
 
-import { getCodexUsage, getZhipuUsage, type ZhipuUsageResponse } from '../api'
+import {
+  getCodexUsage,
+  getGrokSubscriptionUsage,
+  getZhipuUsage,
+  type GrokUsageResponse,
+  type ZhipuUsageResponse,
+} from '../api'
 import { CHANNEL_STATUS_CONFIG, MODEL_FETCHABLE_TYPES } from '../constants'
 import {
   formatRelativeTime,
@@ -64,6 +70,7 @@ import {
   getChannelTypeLabel,
   getResponseTimeConfig,
   isMultiKeyChannel,
+  isZhipuAccountInfoChannel,
   parseModelsList,
   parseGroupsList,
   parseChannelSettings,
@@ -83,6 +90,7 @@ import {
   CodexUsageDialog,
   type CodexUsageDialogData,
 } from './dialogs/codex-usage-dialog'
+import { GrokUsageDialog } from './dialogs/grok-usage-dialog'
 import { ZhipuUsageDialog } from './dialogs/zhipu-usage-dialog'
 import { NumericSpinnerInput } from './numeric-spinner-input'
 
@@ -309,8 +317,12 @@ function BalanceCell({ channel }: { channel: Channel }) {
   const [zhipuUsageOpen, setZhipuUsageOpen] = useState(false)
   const [zhipuUsageResponse, setZhipuUsageResponse] =
     useState<ZhipuUsageResponse | null>(null)
+  const [grokUsageOpen, setGrokUsageOpen] = useState(false)
+  const [grokUsageResponse, setGrokUsageResponse] =
+    useState<GrokUsageResponse | null>(null)
   const isCodex = channel.type === 57
-  const isZhipu = channel.type === 16 || channel.type === 26
+  const isGrok = channel.type === 59
+  const isZhipu = isZhipuAccountInfoChannel(channel)
   const currencyLabel = getCurrencyLabel()
   const tokenSuffix = currencyLabel === 'Tokens' ? ' Tokens' : ''
   const withSuffix = (value: string) =>
@@ -434,13 +446,31 @@ function BalanceCell({ channel }: { channel: Channel }) {
       return
     }
 
+    if (isGrok) {
+      try {
+        const res = await getGrokSubscriptionUsage(channel.id)
+        if (!res.success) {
+          throw new Error(res.message || t('Failed to fetch usage'))
+        }
+        setGrokUsageResponse(res)
+        setGrokUsageOpen(true)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t('Failed to fetch usage')
+        )
+      } finally {
+        setIsUpdating(false)
+      }
+      return
+    }
+
     await handleUpdateChannelBalance(channel.id, queryClient)
     setIsUpdating(false)
   }
   let remainingBadgeLabel = sensitiveVisible ? remainingDisplay : SENSITIVE_MASK
   if (sensitiveVisible && isUpdating) {
     remainingBadgeLabel = t('Updating...')
-  } else if (sensitiveVisible && (isCodex || isZhipu)) {
+  } else if (sensitiveVisible && (isCodex || isZhipu || isGrok)) {
     remainingBadgeLabel = t('Account Info')
   }
   let remainingTooltipLabel = remainingLabel
@@ -450,9 +480,11 @@ function BalanceCell({ channel }: { channel: Channel }) {
     remainingTooltipLabel = t('Click to view Codex usage')
   } else if (isZhipu) {
     remainingTooltipLabel = t('Click to view Zhipu usage')
+  } else if (isGrok) {
+    remainingTooltipLabel = t('Click to view Grok usage')
   }
   let remainingBadgeVariant: StatusBadgeProps['variant'] = variant
-  if (isCodex || isZhipu) {
+  if (isCodex || isZhipu || isGrok) {
     remainingBadgeVariant = 'info'
   } else if (isUpdating) {
     remainingBadgeVariant = 'neutral'
@@ -494,7 +526,9 @@ function BalanceCell({ channel }: { channel: Channel }) {
           />
           <TooltipContent>
             <p>{remainingTooltipLabel}</p>
-            {!isCodex && !isZhipu && <p>{t('Click to update balance')}</p>}
+            {!isCodex && !isZhipu && !isGrok && (
+              <p>{t('Click to update balance')}</p>
+            )}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -547,6 +581,35 @@ function BalanceCell({ channel }: { channel: Channel }) {
               throw new Error(res.message || t('Failed to fetch usage'))
             }
             setZhipuUsageResponse(res)
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : t('Failed to fetch usage')
+            )
+          } finally {
+            setIsUpdating(false)
+          }
+        }}
+        isRefreshing={isUpdating}
+      />
+      <GrokUsageDialog
+        open={grokUsageOpen}
+        onOpenChange={setGrokUsageOpen}
+        channelName={sensitiveVisible ? channel.name : SENSITIVE_MASK}
+        channelId={channel.id}
+        response={grokUsageResponse}
+        onRefresh={async () => {
+          if (isUpdating) {
+            return
+          }
+          setIsUpdating(true)
+          try {
+            const res = await getGrokSubscriptionUsage(channel.id)
+            if (!res.success) {
+              throw new Error(res.message || t('Failed to fetch usage'))
+            }
+            setGrokUsageResponse(res)
           } catch (error) {
             toast.error(
               error instanceof Error

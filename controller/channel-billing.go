@@ -574,6 +574,10 @@ func updateChannelMoonshotBalance(channel *model.Channel) (float64, error) {
 }
 
 func updateChannelBalance(channel *model.Channel) (float64, error) {
+	if isZhipuAccountInfoChannel(channel) {
+		return updateChannelZhipuBalance(channel)
+	}
+
 	baseURL := constant.ChannelBaseURLs[channel.Type]
 	if channel.GetBaseURL() == "" {
 		channel.BaseURL = &baseURL
@@ -603,8 +607,6 @@ func updateChannelBalance(channel *model.Channel) (float64, error) {
 		return updateChannelOpenRouterBalance(channel)
 	case constant.ChannelTypeMoonshot:
 		return updateChannelMoonshotBalance(channel)
-	case constant.ChannelTypeZhipu, constant.ChannelTypeZhipu_v4:
-		return updateChannelZhipuBalance(channel)
 	default:
 		return 0, errors.New("尚未实现")
 	}

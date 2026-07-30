@@ -80,6 +80,51 @@ export type ZhipuUsageResponse = {
 
 export type ZhipuUsageRange = 'today' | '7d' | '30d'
 
+export type GrokUsageSummary = {
+  user_id?: string
+  email?: string
+  first_name?: string
+  last_name?: string
+  principal_type?: string
+  team_id?: string
+  team_name?: string
+  organization_id?: string
+  organization_name?: string
+  subscription_tier?: string
+  entitlement_status?: string
+  credential_expires_at?: string
+  last_credential_refresh?: string
+  credit_usage_percent?: number
+  usage_period_type?: string
+  usage_period_start?: string
+  usage_period_end?: string
+  monthly_limit_cents?: number
+  used_cents?: number
+  on_demand_cap_cents?: number
+  on_demand_used_cents?: number
+  prepaid_balance_cents?: number
+  is_unified_billing_user?: boolean
+  auto_topup_enabled?: boolean
+  auto_topup_amount_cents?: number
+  auto_topup_monthly_max_cents?: number
+  coding_data_retention_opt_out?: boolean
+}
+
+export type GrokUsageResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    summary?: GrokUsageSummary
+    endpoints?: Record<
+      string,
+      {
+        status?: number
+        data?: unknown
+      }
+    >
+  }
+}
+
 export type CodexResetCreditsResponse = CodexUsageResponse
 
 export type CodexUsageResetResponse = CodexUsageResponse
@@ -419,6 +464,16 @@ export async function getZhipuUsage(
   const res = await api.get(
     `/api/channel/${channelId}/zhipu/usage`,
     channelActionConfig({ disableDuplicate: true, params: { range } })
+  )
+  return res.data
+}
+
+export async function getGrokSubscriptionUsage(
+  channelId: number
+): Promise<GrokUsageResponse> {
+  const res = await api.get(
+    `/api/channel/${channelId}/grok_subscription/usage`,
+    channelActionConfig({ disableDuplicate: true })
   )
   return res.data
 }

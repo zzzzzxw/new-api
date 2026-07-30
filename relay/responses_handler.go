@@ -2,7 +2,6 @@ package relay
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -76,7 +75,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
-	var requestBody io.Reader
+	var requestJSON []byte
 	if info.ChannelType != appconstant.ChannelTypeGrokSubscription &&
 		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		storage, err := common.GetBodyStorage(c)
@@ -98,17 +97,10 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if info.ApiType == appconstant.APITypeCodex && info.RelayMode == relayconstant.RelayModeResponses {
 			info.SetUpstreamRequestParametersFromJSON(jsonData)
 		}
-		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
-		}
-		defer closer.Close()
-		jsonData = nil
-		info.UpstreamRequestBodySize = size
-		requestBody = body
 		if info.ApiType != appconstant.APITypeCodex || info.RelayMode != relayconstant.RelayModeResponses {
 			info.CopyRequestParametersToUpstream()
 		}
+		requestJSON = jsonData
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -144,15 +136,17 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
 		info.SetUpstreamRequestParametersFromJSON(jsonData)
-		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
-		}
-		defer closer.Close()
-		jsonData = nil
-		info.UpstreamRequestBodySize = size
-		requestBody = body
+		requestJSON = jsonData
 	}
+
+	requestBodyStorage, err := common.CreateBodyStorage(requestJSON)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	defer requestBodyStorage.Close()
+	info.UpstreamRequestBodySize = requestBodyStorage.Size()
+	requestBody := common.ReaderOnly(requestBodyStorage)
+	requestJSON = nil
 
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)
@@ -167,9 +161,45 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 
 		if httpResp.StatusCode != http.StatusOK {
 			newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
-			// reset status code 重置状态码
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
-			return newAPIError
+			if isEncryptedContentDecryptionError(newAPIError) {
+				originalBody, bodyErr := requestBodyStorage.Bytes()
+				if bodyErr != nil {
+					return types.NewError(bodyErr, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+				}
+				sanitizedBody, removed, sanitizeErr := removeResponsesEncryptedContent(originalBody)
+				if sanitizeErr != nil {
+					return types.NewError(sanitizeErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+				}
+				if removed > 0 {
+					logger.LogInfo(c, fmt.Sprintf(
+						"upstream could not decrypt encrypted_content, retrying once after removing it from %d reasoning item(s)",
+						removed,
+					))
+					retryStorage, storageErr := common.CreateBodyStorage(sanitizedBody)
+					if storageErr != nil {
+						return types.NewError(storageErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+					}
+					defer retryStorage.Close()
+					info.UpstreamRequestBodySize = retryStorage.Size()
+					info.SetUpstreamRequestParametersFromJSON(sanitizedBody)
+
+					retryResp, retryErr := adaptor.DoRequest(c, info, common.ReaderOnly(retryStorage))
+					if retryErr != nil {
+						return types.NewOpenAIError(retryErr, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+					}
+					httpResp = retryResp.(*http.Response)
+					if httpResp.StatusCode == http.StatusOK {
+						newAPIError = nil
+					} else {
+						newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+					}
+				}
+			}
+			if newAPIError != nil {
+				// reset status code 重置状态码
+				service.ResetStatusCode(newAPIError, statusCodeMappingStr)
+				return newAPIError
+			}
 		}
 	}
 
@@ -204,6 +234,57 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		service.PostTextConsumeQuota(c, info, usageDto, nil)
 	}
 	return nil
+}
+
+const encryptedContentDecryptionError = "could not decrypt the provided encrypted_content"
+
+func isEncryptedContentDecryptionError(apiErr *types.NewAPIError) bool {
+	if apiErr == nil || apiErr.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(strings.ToLower(apiErr.Error()), encryptedContentDecryptionError)
+}
+
+func removeResponsesEncryptedContent(data []byte) ([]byte, int, error) {
+	if len(data) == 0 {
+		return data, 0, nil
+	}
+
+	var body map[string]any
+	if err := common.Unmarshal(data, &body); err != nil {
+		return nil, 0, err
+	}
+	input, ok := body["input"].([]any)
+	if !ok {
+		return data, 0, nil
+	}
+
+	removed := 0
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		itemType, _ := item["type"].(string)
+		if itemType != "reasoning" {
+			continue
+		}
+		if _, exists := item["encrypted_content"]; !exists {
+			continue
+		}
+		delete(item, "encrypted_content")
+		removed++
+	}
+	if removed == 0 {
+		return data, 0, nil
+	}
+
+	body["input"] = input
+	sanitized, err := common.Marshal(body)
+	if err != nil {
+		return nil, 0, err
+	}
+	return sanitized, removed, nil
 }
 
 func sanitizeConvertedResponsesChatRequestJSON(convertedRequest any, jsonData []byte) ([]byte, error) {
