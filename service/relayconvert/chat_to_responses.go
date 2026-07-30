@@ -73,6 +73,31 @@ func convertChatResponseFormatToResponsesText(reqFormat *dto.ResponseFormat) jso
 	return textRaw
 }
 
+func assistantFunctionCallItems(msg dto.Message) []map[string]any {
+	if strings.TrimSpace(msg.Role) != "assistant" {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(msg.ParseToolCalls()))
+	for _, tc := range msg.ParseToolCalls() {
+		if strings.TrimSpace(tc.ID) == "" {
+			continue
+		}
+		if tc.Type != "" && tc.Type != "function" {
+			continue
+		}
+		if strings.TrimSpace(tc.Function.Name) == "" {
+			continue
+		}
+		items = append(items, map[string]any{
+			"type":      "function_call",
+			"call_id":   tc.ID,
+			"name":      strings.TrimSpace(tc.Function.Name),
+			"arguments": tc.Function.Arguments,
+		})
+	}
+	return items
+}
+
 func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*dto.OpenAIResponsesRequest, error) {
 	if req == nil {
 		return nil, errors.New("request is nil")
@@ -155,6 +180,7 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		item := map[string]any{
 			"role": role,
 		}
+		functionCallItems := assistantFunctionCallItems(msg)
 
 		// Preserve reasoning_content from assistant messages as a reasoning
 		// input item. Providers with thinking mode require previous reasoning
@@ -171,56 +197,21 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		}
 
 		if msg.Content == nil {
-			item["content"] = ""
-			inputItems = append(inputItems, item)
-
-			if role == "assistant" {
-				for _, tc := range msg.ParseToolCalls() {
-					if strings.TrimSpace(tc.ID) == "" {
-						continue
-					}
-					if tc.Type != "" && tc.Type != "function" {
-						continue
-					}
-					name := strings.TrimSpace(tc.Function.Name)
-					if name == "" {
-						continue
-					}
-					inputItems = append(inputItems, map[string]any{
-						"type":      "function_call",
-						"call_id":   tc.ID,
-						"name":      name,
-						"arguments": tc.Function.Arguments,
-					})
-				}
+			if len(functionCallItems) == 0 {
+				item["content"] = ""
+				inputItems = append(inputItems, item)
 			}
+			inputItems = append(inputItems, functionCallItems...)
 			continue
 		}
 
 		if msg.IsStringContent() {
-			item["content"] = msg.StringContent()
-			inputItems = append(inputItems, item)
-
-			if role == "assistant" {
-				for _, tc := range msg.ParseToolCalls() {
-					if strings.TrimSpace(tc.ID) == "" {
-						continue
-					}
-					if tc.Type != "" && tc.Type != "function" {
-						continue
-					}
-					name := strings.TrimSpace(tc.Function.Name)
-					if name == "" {
-						continue
-					}
-					inputItems = append(inputItems, map[string]any{
-						"type":      "function_call",
-						"call_id":   tc.ID,
-						"name":      name,
-						"arguments": tc.Function.Arguments,
-					})
-				}
+			contentStr := msg.StringContent()
+			if contentStr != "" || len(functionCallItems) == 0 {
+				item["content"] = contentStr
+				inputItems = append(inputItems, item)
 			}
+			inputItems = append(inputItems, functionCallItems...)
 			continue
 		}
 
@@ -263,29 +254,11 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 				})
 			}
 		}
-		item["content"] = contentParts
-		inputItems = append(inputItems, item)
-
-		if role == "assistant" {
-			for _, tc := range msg.ParseToolCalls() {
-				if strings.TrimSpace(tc.ID) == "" {
-					continue
-				}
-				if tc.Type != "" && tc.Type != "function" {
-					continue
-				}
-				name := strings.TrimSpace(tc.Function.Name)
-				if name == "" {
-					continue
-				}
-				inputItems = append(inputItems, map[string]any{
-					"type":      "function_call",
-					"call_id":   tc.ID,
-					"name":      name,
-					"arguments": tc.Function.Arguments,
-				})
-			}
+		if len(contentParts) > 0 || len(functionCallItems) == 0 {
+			item["content"] = contentParts
+			inputItems = append(inputItems, item)
 		}
+		inputItems = append(inputItems, functionCallItems...)
 	}
 
 	inputRaw, err := common.Marshal(inputItems)

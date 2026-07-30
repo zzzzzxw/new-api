@@ -395,6 +395,10 @@ const (
 type ResponsesStreamResponse struct {
 	Type      string                   `json:"type"`
 	Response  *OpenAIResponsesResponse `json:"response,omitempty"`
+	Error     any                      `json:"error,omitempty"`
+	Code      any                      `json:"code,omitempty"`
+	Message   string                   `json:"message,omitempty"`
+	Param     string                   `json:"param,omitempty"`
 	Delta     string                   `json:"delta,omitempty"`
 	Text      string                   `json:"text,omitempty"`
 	Arguments string                   `json:"arguments,omitempty"`
@@ -407,6 +411,36 @@ type ResponsesStreamResponse struct {
 	SummaryIndex *int                           `json:"summary_index,omitempty"`
 	ItemID       string                         `json:"item_id,omitempty"`
 	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
+}
+
+// GetOpenAIError extracts errors from both response.failed and response.error
+// events. The official Responses API does not include an error type on these
+// events, so code/message are sufficient to identify an upstream error.
+func (r *ResponsesStreamResponse) GetOpenAIError() *types.OpenAIError {
+	if r == nil {
+		return nil
+	}
+	if r.Response != nil {
+		if openAIError := r.Response.GetOpenAIError(); hasOpenAIErrorDetails(openAIError) {
+			return openAIError
+		}
+	}
+	if openAIError := GetOpenAIError(r.Error); hasOpenAIErrorDetails(openAIError) {
+		return openAIError
+	}
+	if r.Message == "" && r.Code == nil && r.Param == "" {
+		return nil
+	}
+	return &types.OpenAIError{
+		Message: r.Message,
+		Code:    r.Code,
+		Param:   r.Param,
+	}
+}
+
+func hasOpenAIErrorDetails(openAIError *types.OpenAIError) bool {
+	return openAIError != nil &&
+		(openAIError.Message != "" || openAIError.Type != "" || openAIError.Code != nil || openAIError.Param != "")
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

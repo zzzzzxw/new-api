@@ -116,6 +116,50 @@ func TestOaiResponsesToChatBufferedStreamHandlerReturnsJSONFromSSE(t *testing.T)
 	require.Contains(t, got, `"finish_reason":"tool_calls"`)
 }
 
+func TestOaiResponsesToChatBufferedStreamHandlerPreservesFailedErrorDetails(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"The model failed to generate a response."}}}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	c, _, resp, info := newResponsesChatTestContext(t, body, false)
+
+	usage, err := OaiResponsesToChatBufferedStreamHandler(c, info, resp)
+	require.Nil(t, usage)
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCode("server_error"), err.GetErrorCode())
+	require.Equal(t, "The model failed to generate a response.", err.Error())
+	require.Equal(t, "response.failed", info.UpstreamResponseParameters["type"])
+	require.NotNil(t, info.UpstreamResponseParameters["response"])
+}
+
+func TestOaiResponsesToChatStreamHandlerPreservesTopLevelErrorEventDetails(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	body := strings.Join([]string{
+		`data: {"type":"response.error","code":"invalid_request_error","message":"Invalid input item.","param":"input"}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	c, _, resp, info := newResponsesChatTestContext(t, body, true)
+
+	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
+	require.Nil(t, usage)
+	require.NotNil(t, err)
+	require.Equal(t, types.ErrorCode("invalid_request_error"), err.GetErrorCode())
+	require.Equal(t, "Invalid input item.", err.Error())
+	require.Equal(t, "response.error", info.UpstreamResponseParameters["type"])
+	require.Equal(t, "input", info.UpstreamResponseParameters["param"])
+}
+
 func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)

@@ -1,9 +1,11 @@
 package relayconvert
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -928,6 +930,121 @@ func TestChatCompletionsStreamToResponsesRestoresCustomToolInputEvents(t *testin
 	assert.Equal(t, responsesOutputTypeCustomToolCall, events[4].Payload.Item.Type)
 	assert.Equal(t, "patch body", events[4].Payload.Item.Input)
 	assert.Equal(t, responsesEventCompleted, events[5].Type)
+}
+
+func TestChatCompletionsRequestToResponsesRequestAssistantNilContentWithToolCallsOmitsEmptyAssistantItem(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "call a tool"},
+			{Role: "assistant", Content: nil, ToolCalls: mustMarshalToolCallsJSON(t, []dto.ToolCallRequest{
+				{ID: "call_1", Type: "function", Function: dto.FunctionRequest{Name: "lookup", Arguments: `{"q":"x"}`}},
+			})},
+			{Role: "tool", ToolCallId: "call_1", Content: "result"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(3), gjson.GetBytes(got.Input, "#").Int())
+	require.False(t, gjson.GetBytes(got.Input, "1.role").Exists(), "no empty assistant role item should exist")
+	require.Equal(t, "function_call", gjson.GetBytes(got.Input, "1.type").String())
+	assert.Equal(t, "call_1", gjson.GetBytes(got.Input, "1.call_id").String())
+	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "2.type").String())
+}
+
+func TestChatCompletionsRequestToResponsesRequestAssistantEmptyContentPartsWithToolCallsSkipsEmptyItem(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "call a tool"},
+			{Role: "assistant", Content: []any{}, ToolCalls: mustMarshalToolCallsJSON(t, []dto.ToolCallRequest{
+				{ID: "call_1", Type: "function", Function: dto.FunctionRequest{Name: "lookup", Arguments: `{"q":"x"}`}},
+			})},
+			{Role: "tool", ToolCallId: "call_1", Content: "result"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(3), gjson.GetBytes(got.Input, "#").Int())
+	require.False(t, gjson.GetBytes(got.Input, "1.role").Exists(), "no empty assistant role item should exist")
+	require.Equal(t, "function_call", gjson.GetBytes(got.Input, "1.type").String())
+	assert.Equal(t, "call_1", gjson.GetBytes(got.Input, "1.call_id").String())
+	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "2.type").String())
+}
+
+func TestChatCompletionsRequestToResponsesRequestAssistantEmptyStringContentWithToolCallsSkipsEmptyItem(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "call a tool"},
+			{Role: "assistant", Content: "", ToolCalls: mustMarshalToolCallsJSON(t, []dto.ToolCallRequest{
+				{ID: "call_1", Type: "function", Function: dto.FunctionRequest{Name: "lookup", Arguments: `{"q":"x"}`}},
+			})},
+			{Role: "tool", ToolCallId: "call_1", Content: "result"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(3), gjson.GetBytes(got.Input, "#").Int())
+	require.False(t, gjson.GetBytes(got.Input, "1.role").Exists(), "no assistant role item should exist")
+	require.Equal(t, "function_call", gjson.GetBytes(got.Input, "1.type").String())
+	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "2.type").String())
+}
+
+func TestChatCompletionsRequestToResponsesRequestAssistantNonEmptyContentWithToolCallsPreserved(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "call a tool"},
+			assistantMessageWithTool("I'll look that up", "call_1", "lookup", `{"q":"x"}`),
+			{Role: "tool", ToolCallId: "call_1", Content: "result"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(4), gjson.GetBytes(got.Input, "#").Int())
+	require.Equal(t, "assistant", gjson.GetBytes(got.Input, "1.role").String())
+	require.Equal(t, "I'll look that up", gjson.GetBytes(got.Input, "1.content").String())
+	require.Equal(t, "function_call", gjson.GetBytes(got.Input, "2.type").String())
+	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "3.type").String())
+}
+
+func TestChatCompletionsRequestToResponsesRequestAssistantNilContentWithoutToolCallsEmitsEmptyItem(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{
+		Model: "gpt-test",
+		N:     lo.ToPtr(1),
+		Messages: []dto.Message{
+			{Role: "user", Content: "hello"},
+			{Role: "assistant", Content: nil},
+			{Role: "user", Content: "follow up"},
+		},
+	}
+
+	got, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(3), gjson.GetBytes(got.Input, "#").Int())
+	require.Equal(t, "assistant", gjson.GetBytes(got.Input, "1.role").String())
+	assert.Equal(t, "", gjson.GetBytes(got.Input, "1.content").String())
+}
+
+func mustMarshalToolCallsJSON(t *testing.T, toolCalls []dto.ToolCallRequest) json.RawMessage {
+	t.Helper()
+	b, err := common.Marshal(toolCalls)
+	require.NoError(t, err)
+	return b
 }
 
 func TestChatCompletionsStreamToResponsesRestoresMultiAgentNamespace(t *testing.T) {
