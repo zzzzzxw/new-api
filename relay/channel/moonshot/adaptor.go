@@ -84,6 +84,14 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request.Temperature != nil && isTemperatureOneOnlyModel(getUpstreamModelName(info, request.Model)) && *request.Temperature != 1.0 {
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
+	// Kimi/Moonshot 上游不认 OpenAI 的 developer role，归一化为 system。
+	// 客户端（如 Codex CLI）可能按 OpenAI 新规范传入 developer role，
+	// 这里兜底转换，避免透传后被 Kimi 拒绝（role 'developer' is not allowed）。
+	for i := range request.Messages {
+		if request.Messages[i].Role == "developer" {
+			request.Messages[i].Role = "system"
+		}
+	}
 	return request, nil
 }
 

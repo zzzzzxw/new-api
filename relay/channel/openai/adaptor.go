@@ -342,16 +342,38 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 
 		info.ReasoningEffort = request.ReasoningEffort
 
-		// o系列模型developer适配（o1-mini除外）
-		if !strings.HasPrefix(info.UpstreamModelName, "o1-mini") && !strings.HasPrefix(info.UpstreamModelName, "o1-preview") {
-			//修改第一个Message的内容，将system改为developer
-			if len(request.Messages) > 0 && request.Messages[0].Role == "system" {
-				request.Messages[0].Role = "developer"
-			}
-		}
+		convertOpenAISystemRoleForReasoningModel(request)
+	} else {
+		// 非 o系列/gpt-5 模型：上游不支持 developer role，归一化为 system。
+		// 客户端（如 Codex CLI）可能按 OpenAI 新规范传入 developer role，
+		// 但 Kimi/DeepSeek 等兼容上游不认 developer，会报 role 'developer' is not allowed。
+		normalizeDeveloperRoleToSystem(request)
 	}
 
 	return request, nil
+}
+
+// convertOpenAISystemRoleForReasoningModel maps the first system message to
+// developer role for OpenAI reasoning models (o-series excluding o1-mini/preview, gpt-5).
+func convertOpenAISystemRoleForReasoningModel(request *dto.GeneralOpenAIRequest) {
+	// o1-mini/o1-preview 不支持 developer role，保持 system
+	if strings.HasPrefix(request.Model, "o1-mini") || strings.HasPrefix(request.Model, "o1-preview") {
+		return
+	}
+	if len(request.Messages) > 0 && request.Messages[0].Role == "system" {
+		request.Messages[0].Role = "developer"
+	}
+}
+
+// normalizeDeveloperRoleToSystem maps developer messages back to system for
+// upstreams that do not support the OpenAI developer role. Only call this when
+// the upstream model is NOT an OpenAI reasoning model (o-series/gpt-5).
+func normalizeDeveloperRoleToSystem(request *dto.GeneralOpenAIRequest) {
+	for i := range request.Messages {
+		if request.Messages[i].Role == "developer" {
+			request.Messages[i].Role = "system"
+		}
+	}
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {

@@ -23,8 +23,9 @@ services:
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
-    ports:
-      - "3000:3000"
+    # 不直接暴露端口，走 nginx 反向代理
+    expose:
+      - "3000"
     volumes:
       - ./data:/data
       - ./logs:/app/logs
@@ -54,11 +55,22 @@ services:
 #      - clickhouse  # Uncomment if using ClickHouse for LOG_SQL_DSN
     networks:
       - new-api-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: new-api-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - new-api
+    networks:
+      - new-api-network
 
   redis:
     image: redis:latest

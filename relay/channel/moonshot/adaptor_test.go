@@ -66,3 +66,26 @@ func TestConvertOpenAIRequestOtherMoonshotModelKeepsTemperature(t *testing.T) {
 	require.NotNil(t, convertedRequest.Temperature)
 	require.Equal(t, 0.7, *convertedRequest.Temperature)
 }
+
+func TestConvertOpenAIRequestNormalizesDeveloperRoleToSystem(t *testing.T) {
+	request := &dto.GeneralOpenAIRequest{
+		Model: "kimi-k2.5",
+		Messages: []dto.Message{
+			{Role: "developer", Content: "system prompt"},
+			{Role: "user", Content: "hello"},
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "kimi-k2.5",
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	require.Equal(t, "system", convertedRequest.Messages[0].Role, "developer role should be normalized to system for Kimi")
+	require.Equal(t, "user", convertedRequest.Messages[1].Role, "user role should be preserved")
+}
