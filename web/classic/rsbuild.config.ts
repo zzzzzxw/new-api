@@ -1,6 +1,7 @@
 import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { defineConfig, loadEnv } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 
@@ -10,6 +11,16 @@ const semiUiDir = path.resolve(
   path.dirname(require.resolve('@douyinfe/semi-ui')),
   '../..',
 );
+
+// Resolve date-fns from the semi-ui package so it works with any bun
+// node_modules layout (hoisted vs nested). semi-ui requires date-fns@2.x
+// which may differ from the top-level date-fns used by other packages.
+const semiUiRequire = createRequire(path.resolve(semiUiDir, 'package.json'));
+const dateFnsDir = (() => {
+  const nested = path.resolve(semiUiDir, 'node_modules/date-fns');
+  if (fs.existsSync(nested)) return nested;
+  return path.dirname(semiUiRequire.resolve('date-fns/package.json'));
+})();
 
 function normalizeBasePath(value: string | undefined): string {
   if (!value || value.trim() === '/' || value.trim() === '') return '';
@@ -49,7 +60,7 @@ export default defineConfig(({ envMode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        'date-fns': path.resolve(semiUiDir, 'node_modules/date-fns'),
+        'date-fns': dateFnsDir,
         '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
           semiUiDir,
           'dist/css/semi.css',
