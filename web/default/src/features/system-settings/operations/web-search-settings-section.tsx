@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import * as z from 'zod'
+import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
@@ -48,15 +49,21 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const PROVIDER_DUCKDUCKGO = 'duckduckgo'
 const PROVIDER_TAVILY = 'tavily'
 
+// NOTE: react-hook-form treats dots in field names as nested paths
+// (isKey: /^\w*$/), so the form uses flat camelCase names and maps
+// them to the real option keys only when saving.
 const webSearchSchema = z.object({
-  'web_search_setting.provider': z.string(),
-  'web_search_setting.tavily_api_key': z.string(),
+  provider: z.string(),
+  tavilyApiKey: z.string(),
 })
 
 type WebSearchFormValues = z.infer<typeof webSearchSchema>
 
 type WebSearchSettingsSectionProps = {
-  defaultValues: WebSearchFormValues
+  defaultValues: {
+    'web_search_setting.provider': string
+    'web_search_setting.tavily_api_key': string
+  }
 }
 
 export function WebSearchSettingsSection({
@@ -65,30 +72,35 @@ export function WebSearchSettingsSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
+  const initialValues = useMemo<WebSearchFormValues>(
+    () => ({
+      provider: defaultValues['web_search_setting.provider'],
+      tavilyApiKey: defaultValues['web_search_setting.tavily_api_key'],
+    }),
+    [defaultValues]
+  )
+
   const form = useForm<WebSearchFormValues>({
     resolver: zodResolver(webSearchSchema),
-    defaultValues,
+    defaultValues: initialValues,
   })
 
-  useResetForm(form, defaultValues)
+  useResetForm(form, initialValues)
 
-  const provider = form.watch('web_search_setting.provider')
+  const provider = form.watch('provider')
 
   const onSubmit = async (values: WebSearchFormValues) => {
     const updates: Array<{ key: string; value: string }> = []
 
-    if (
-      values['web_search_setting.provider'] !==
-      defaultValues['web_search_setting.provider']
-    ) {
+    if (values.provider !== initialValues.provider) {
       updates.push({
         key: 'web_search_setting.provider',
-        value: values['web_search_setting.provider'],
+        value: values.provider,
       })
     }
 
-    const apiKey = values['web_search_setting.tavily_api_key'].trim()
-    if (apiKey !== defaultValues['web_search_setting.tavily_api_key']) {
+    const apiKey = values.tavilyApiKey.trim()
+    if (apiKey !== initialValues.tavilyApiKey) {
       updates.push({
         key: 'web_search_setting.tavily_api_key',
         value: apiKey,
@@ -115,7 +127,7 @@ export function WebSearchSettingsSection({
           />
           <FormField
             control={form.control}
-            name='web_search_setting.provider'
+            name='provider'
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Search Provider')}</FormLabel>
@@ -156,7 +168,7 @@ export function WebSearchSettingsSection({
           {provider === PROVIDER_TAVILY && (
             <FormField
               control={form.control}
-              name='web_search_setting.tavily_api_key'
+              name='tavilyApiKey'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Tavily API Key')}</FormLabel>
