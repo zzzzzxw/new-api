@@ -68,7 +68,7 @@ func SearchDuckDuckGo(query string, maxResults int) (*dto.WebSearchResponse, err
 	}
 	req.Header.Set("User-Agent", "new-api-web-search/1.0")
 
-	client := &http.Client{Timeout: duckDuckGoTimeout}
+	client := GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("duckduckgo request failed: %w", err)
