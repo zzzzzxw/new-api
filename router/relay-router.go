@@ -72,6 +72,9 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.TokenAuth())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{
+		// web search (DuckDuckGo) - token-auth only, no channel distribution needed
+		relayV1Router.POST("/search", controller.WebSearch)
+
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
 		wsRouter.Use(middleware.Distribute())
