@@ -25,6 +25,7 @@ import SettingsSidebarModulesAdmin from '../../pages/Setting/Operation/SettingsS
 import SettingsSensitiveWords from '../../pages/Setting/Operation/SettingsSensitiveWords';
 import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
+import SettingsWebSearch from '../../pages/Setting/Operation/SettingsWebSearch';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
 import SettingsBackup from '../../pages/Setting/Operation/SettingsBackup';
@@ -82,6 +83,10 @@ const OperationSetting = () => {
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
+
+    /* 联网搜索设置 */
+    'web_search_setting.provider': 'duckduckgo',
+    'web_search_setting.tavily_api_key': '',
   });
 
   let [loading, setLoading] = useState(false);
@@ -150,6 +155,10 @@ const OperationSetting = () => {
         {/* 监控设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsMonitoring options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 联网搜索设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsWebSearch options={inputs} refresh={onRefresh} />
         </Card>
         {/* 额度设置 */}
         <Card style={{ marginTop: '10px' }}>

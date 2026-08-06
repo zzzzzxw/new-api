@@ -89,3 +89,45 @@ func TestSearchDuckDuckGo_EmptyQuery(t *testing.T) {
 	_, err := SearchDuckDuckGo("   ", 5)
 	require.Error(t, err)
 }
+
+func TestConvertTavilyResponse(t *testing.T) {
+	body := `{
+		"answer": "OpenAI recently announced new models.",
+		"results": [
+			{
+				"title": "OpenAI News",
+				"url": "https://openai.com/news",
+				"content": "Latest updates from OpenAI.",
+				"score": 0.98
+			},
+			{
+				"title": "TechCrunch coverage",
+				"url": "https://techcrunch.com/openai",
+				"content": "",
+				"score": 0.87
+			},
+			{
+				"title": "",
+				"url": "",
+				"content": "skip me",
+				"score": 0.5
+			}
+		]
+	}`
+	var tavilyResp tavilyResponse
+	require.NoError(t, common.Unmarshal([]byte(body), &tavilyResp))
+
+	got := convertTavilyResponse("openai news", &tavilyResp)
+
+	assert.Equal(t, "openai news", got.Query)
+	assert.Equal(t, "OpenAI recently announced new models.", got.Answer)
+	require.Len(t, got.Results, 2)
+	assert.Equal(t, "OpenAI News — Latest updates from OpenAI.", got.Results[0].Text)
+	assert.Equal(t, "https://openai.com/news", got.Results[0].URL)
+	assert.Equal(t, "TechCrunch coverage", got.Results[1].Text)
+}
+
+func TestSearchTavily_EmptyQuery(t *testing.T) {
+	_, err := SearchTavily("  ", 5, "tvly-test")
+	require.Error(t, err)
+}

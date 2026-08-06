@@ -371,6 +371,8 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'web_search_setting.provider': string
+  'web_search_setting.tavily_api_key': string
 }
 
 export type SecuritySettings = {

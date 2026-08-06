@@ -26,6 +26,7 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { WebSearchSettingsSection } from './web-search-settings-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -89,6 +90,20 @@ const OPERATIONS_SECTIONS = [
           WorkerValidKey: settings.WorkerValidKey,
           WorkerAllowHttpImageRequestEnabled:
             settings.WorkerAllowHttpImageRequestEnabled,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'web-search',
+    titleKey: 'Web Search',
+    build: (settings: OperationsSettings) => (
+      <WebSearchSettingsSection
+        defaultValues={{
+          'web_search_setting.provider':
+            settings['web_search_setting.provider'],
+          'web_search_setting.tavily_api_key':
+            settings['web_search_setting.tavily_api_key'],
         }}
       />
     ),

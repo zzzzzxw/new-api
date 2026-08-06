@@ -74,7 +74,7 @@ func WebSearch(c *gin.Context) {
 		}
 	}
 
-	result, err := service.SearchDuckDuckGo(req.Query, maxResults)
+	result, provider, err := service.SearchWeb(req.Query, maxResults)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"success": false,
@@ -102,7 +102,7 @@ func WebSearch(c *gin.Context) {
 			Other: map[string]interface{}{
 				"tool":     webSearchToolName,
 				"query":    req.Query,
-				"provider": "duckduckgo",
+				"provider": provider,
 				"price_1k": operation_setting.GetToolPrice(webSearchToolName),
 			},
 		})

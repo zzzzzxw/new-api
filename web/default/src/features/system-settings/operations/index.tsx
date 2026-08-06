@@ -55,6 +55,8 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'web_search_setting.provider': 'duckduckgo',
+  'web_search_setting.tavily_api_key': '',
 }
 
 export function OperationsSettings() {
