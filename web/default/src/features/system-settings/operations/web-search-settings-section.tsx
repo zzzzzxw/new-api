@@ -20,6 +20,7 @@ import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   Form,
   FormControl,
@@ -96,6 +97,10 @@ export function WebSearchSettingsSection({
 
     for (const update of updates) {
       await updateOption.mutateAsync(update)
+    }
+
+    if (updates.length === 0) {
+      toast.info(t('No changes to save'))
     }
   }
 
