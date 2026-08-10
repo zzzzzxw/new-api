@@ -123,6 +123,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   exchangeGrokOAuthAuthorization,
+  completeCodexOAuth,
   fetchModels,
   generateGrokOAuthAuthorization,
   getAllModels,
@@ -132,6 +133,7 @@ import {
   getPrefillGroups,
   refreshCodexCredential,
   refreshGrokSubscriptionCredential,
+  startCodexOAuth,
 } from '../../api'
 import {
   ADD_MODE_OPTIONS,
@@ -605,6 +607,11 @@ export function ChannelMutateDrawer({
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
   const [isCodexCredentialRefreshing, setIsCodexCredentialRefreshing] =
     useState(false)
+  const [isCodexOAuthStarting, setIsCodexOAuthStarting] = useState(false)
+  const [isCodexOAuthCompleting, setIsCodexOAuthCompleting] = useState(false)
+  const [codexOAuthCallback, setCodexOAuthCallback] = useState('')
+  const [codexOAuthAuthorizationUrl, setCodexOAuthAuthorizationUrl] =
+    useState('')
   const [isGrokCredentialRefreshing, setIsGrokCredentialRefreshing] =
     useState(false)
   const [isGrokOAuthStarting, setIsGrokOAuthStarting] = useState(false)
@@ -780,6 +787,13 @@ export function ChannelMutateDrawer({
     if (!open || currentType !== 59) {
       setGrokOAuthCallback('')
       setGrokOAuthSession(null)
+    }
+  }, [currentType, open])
+
+  useEffect(() => {
+    if (!open || currentType !== 57) {
+      setCodexOAuthCallback('')
+      setCodexOAuthAuthorizationUrl('')
     }
   }, [currentType, open])
 
@@ -1355,6 +1369,72 @@ export function ChannelMutateDrawer({
       setIsCodexCredentialRefreshing(false)
     }
   }, [channelId, queryClient, t])
+
+  const handleStartCodexOAuth = useCallback(async () => {
+    if (!channelId) return
+
+    const authWindow = window.open('about:blank', '_blank')
+    if (authWindow) {
+      authWindow.opener = null
+    }
+    setIsCodexOAuthStarting(true)
+    try {
+      const res = await startCodexOAuth(channelId)
+      if (!res.success || !res.data?.authorize_url) {
+        throw new Error(res.message || t('Failed to start Codex authorization'))
+      }
+      setCodexOAuthAuthorizationUrl(res.data.authorize_url)
+      if (authWindow) {
+        authWindow.location.href = res.data.authorize_url
+      } else {
+        window.open(res.data.authorize_url, '_blank', 'noopener,noreferrer')
+      }
+      toast.success(t('Codex authorization page opened'))
+    } catch (error) {
+      authWindow?.close()
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to start Codex authorization')
+      )
+    } finally {
+      setIsCodexOAuthStarting(false)
+    }
+  }, [channelId, t])
+
+  const handleCompleteCodexOAuth = useCallback(async () => {
+    if (!channelId || !codexOAuthCallback.trim()) {
+      toast.error(t('Paste the callback URL or authorization code first'))
+      return
+    }
+    setIsCodexOAuthCompleting(true)
+    try {
+      const res = await completeCodexOAuth(
+        channelId,
+        codexOAuthCallback.trim()
+      )
+      if (!res.success) {
+        throw new Error(
+          res.message || t('Failed to complete Codex authorization')
+        )
+      }
+      await queryClient.invalidateQueries({
+        queryKey: channelsQueryKeys.detail(channelId),
+        refetchType: 'none',
+      })
+      setCodexOAuthCallback('')
+      setCodexOAuthAuthorizationUrl('')
+      toast.success(t('Codex OAuth credential saved'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to complete Codex authorization')
+      )
+    } finally {
+      setIsCodexOAuthCompleting(false)
+    }
+  }, [channelId, codexOAuthCallback, queryClient, t])
 
   const handleStartGrokOAuth = useCallback(async () => {
     const authWindow = window.open('about:blank', '_blank')
@@ -3062,10 +3142,32 @@ export function ChannelMutateDrawer({
                                   <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                                     <div className='text-muted-foreground text-xs'>
                                       {t(
-                                        'Codex channels use an OAuth JSON credential as the key.'
+                                        'Authorize this existing Codex channel independently from your local Codex login.'
                                       )}
                                     </div>
                                     <div className='flex flex-wrap items-center gap-2'>
+                                      {isEditing && channelId && (
+                                        <Button
+                                          type='button'
+                                          variant='outline'
+                                          size='sm'
+                                          onClick={handleStartCodexOAuth}
+                                          disabled={
+                                            sensitiveLocked ||
+                                            isCodexOAuthStarting ||
+                                            isCodexOAuthCompleting
+                                          }
+                                        >
+                                          {isCodexOAuthStarting ? (
+                                            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                                          ) : (
+                                            <ExternalLink className='mr-2 h-4 w-4' />
+                                          )}
+                                          {isCodexOAuthStarting
+                                            ? t('Opening...')
+                                            : t('Authorize with Codex')}
+                                        </Button>
+                                      )}
                                       {isEditing && channelId && (
                                         <Button
                                           type='button'
@@ -3089,6 +3191,65 @@ export function ChannelMutateDrawer({
                                       )}
                                     </div>
                                   </div>
+                                  {codexOAuthAuthorizationUrl && (
+                                    <div className='bg-muted/30 flex flex-col gap-2 rounded-md border p-3'>
+                                      <p className='text-muted-foreground text-xs'>
+                                        {t(
+                                          'After authorizing, the browser may show that localhost refused the connection. Copy the full callback URL from the address bar and paste it below.'
+                                        )}
+                                      </p>
+                                      <Input
+                                        value={codexOAuthCallback}
+                                        onChange={(event) =>
+                                          setCodexOAuthCallback(
+                                            event.target.value
+                                          )
+                                        }
+                                        placeholder={t(
+                                          'Paste callback URL or authorization code'
+                                        )}
+                                        disabled={
+                                          sensitiveLocked ||
+                                          isCodexOAuthCompleting
+                                        }
+                                        className='font-mono text-xs'
+                                      />
+                                      <div className='flex flex-wrap gap-2'>
+                                        <Button
+                                          type='button'
+                                          size='sm'
+                                          onClick={handleCompleteCodexOAuth}
+                                          disabled={
+                                            sensitiveLocked ||
+                                            isCodexOAuthCompleting ||
+                                            !codexOAuthCallback.trim()
+                                          }
+                                        >
+                                          {isCodexOAuthCompleting && (
+                                            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                                          )}
+                                          {isCodexOAuthCompleting
+                                            ? t('Saving...')
+                                            : t('Complete authorization')}
+                                        </Button>
+                                        <Button
+                                          type='button'
+                                          variant='ghost'
+                                          size='sm'
+                                          onClick={() =>
+                                            window.open(
+                                              codexOAuthAuthorizationUrl,
+                                              '_blank',
+                                              'noopener,noreferrer'
+                                            )
+                                          }
+                                        >
+                                          <ExternalLink className='mr-2 h-4 w-4' />
+                                          {t('Open again')}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
                                   <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
                                     <AlertDescription>
                                       {t(

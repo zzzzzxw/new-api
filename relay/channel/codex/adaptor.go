@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	appconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -112,6 +115,57 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	resp, err := channel.DoApiRequest(a, c, info, requestBody)
+	if err != nil || resp == nil || (resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden) {
+		return resp, err
+	}
+
+	// Codex access tokens are short-lived. The normal relay path used to return
+	// the 401 directly, even when a valid refresh_token was stored in the
+	// channel credential. Refresh once and replay the same request body.
+	seeker, canReplay := requestBody.(io.Seeker)
+	if !canReplay || info == nil || info.ChannelId <= 0 {
+		return resp, nil
+	}
+
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+
+	oldKey, parseErr := ParseOAuthKey(strings.TrimSpace(info.ApiKey))
+	if parseErr != nil {
+		return resp, nil
+	}
+
+	refreshedKey, _, refreshErr := service.RefreshCodexChannelCredential(
+		ctx,
+		info.ChannelId,
+		service.CodexCredentialRefreshOptions{
+			ResetCaches:         true,
+			ExpectedAccessToken: oldKey.AccessToken,
+		},
+	)
+	if refreshErr != nil || refreshedKey == nil {
+		return resp, nil
+	}
+
+	encodedKey, marshalErr := common.Marshal(refreshedKey)
+	if marshalErr != nil {
+		return resp, nil
+	}
+	info.ApiKey = string(encodedKey)
+	if c != nil {
+		common.SetContextKey(c, appconstant.ContextKeyChannelKey, info.ApiKey)
+	}
+
+	if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr != nil {
+		return resp, nil
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 

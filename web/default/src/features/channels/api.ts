@@ -143,6 +143,26 @@ export type CodexCredentialRefreshResponse = {
   }
 }
 
+export type CodexOAuthStartResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    authorize_url?: string
+  }
+}
+
+export type CodexOAuthCompleteResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    channel_id?: number
+    account_id?: string
+    email?: string
+    expires_at?: string
+    last_refresh?: string
+  }
+}
+
 export type GrokOAuthAuthorizationResponse = {
   success: boolean
   message?: string
@@ -408,6 +428,29 @@ export async function refreshCodexCredential(
   const res = await api.post(
     `/api/channel/${channelId}/codex/refresh`,
     {},
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function startCodexOAuth(
+  channelId: number
+): Promise<CodexOAuthStartResponse> {
+  const res = await api.post(
+    `/api/channel/${channelId}/codex/oauth/start`,
+    {},
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function completeCodexOAuth(
+  channelId: number,
+  input: string
+): Promise<CodexOAuthCompleteResponse> {
+  const res = await api.post(
+    `/api/channel/${channelId}/codex/oauth/complete`,
+    { input },
     channelActionConfig()
   )
   return res.data

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -13,7 +14,8 @@ import (
 )
 
 type CodexCredentialRefreshOptions struct {
-	ResetCaches bool
+	ResetCaches         bool
+	ExpectedAccessToken string
 }
 
 type CodexOAuthKey struct {
@@ -39,7 +41,18 @@ func parseCodexOAuthKey(raw string) (*CodexOAuthKey, error) {
 	return &key, nil
 }
 
+var codexCredentialRefreshLocks sync.Map
+
 func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*CodexOAuthKey, *model.Channel, error) {
+	lockValue, _ := codexCredentialRefreshLocks.LoadOrStore(channelID, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+
+	return refreshCodexChannelCredential(ctx, channelID, opts)
+}
+
+func refreshCodexChannelCredential(ctx context.Context, channelID int, opts CodexCredentialRefreshOptions) (*CodexOAuthKey, *model.Channel, error) {
 	ch, err := model.GetChannelById(channelID, true)
 	if err != nil {
 		return nil, nil, err
@@ -59,6 +72,12 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 		return nil, nil, fmt.Errorf("codex channel: refresh_token is required to refresh credential")
 	}
 
+	if expected := strings.TrimSpace(opts.ExpectedAccessToken); expected != "" &&
+		strings.TrimSpace(oauthKey.AccessToken) != "" &&
+		strings.TrimSpace(oauthKey.AccessToken) != expected {
+		return oauthKey, ch, nil
+	}
+
 	refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -75,15 +94,11 @@ func RefreshCodexChannelCredential(ctx context.Context, channelID int, opts Code
 		oauthKey.Type = "codex"
 	}
 
-	if strings.TrimSpace(oauthKey.AccountID) == "" {
-		if accountID, ok := ExtractCodexAccountIDFromJWT(oauthKey.AccessToken); ok {
-			oauthKey.AccountID = accountID
-		}
+	if accountID, ok := ExtractCodexAccountIDFromJWT(oauthKey.AccessToken); ok {
+		oauthKey.AccountID = accountID
 	}
-	if strings.TrimSpace(oauthKey.Email) == "" {
-		if email, ok := ExtractEmailFromJWT(oauthKey.AccessToken); ok {
-			oauthKey.Email = email
-		}
+	if email, ok := ExtractEmailFromJWT(oauthKey.AccessToken); ok {
+		oauthKey.Email = email
 	}
 
 	encoded, err := common.Marshal(oauthKey)
