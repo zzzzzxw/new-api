@@ -48,9 +48,9 @@ func TestAdvancedCustomTaskAdaptorBuildsSeedancePayload(t *testing.T) {
 	})
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("task_request", relaycommon.TaskSubmitReq{
-		Model:   "seedance-2-5-260628",
-		Prompt:  "a paper plane flying over Shanghai",
-		Seconds: "8",
+		Model:    "seedance-2-5-260628",
+		Prompt:   "a paper plane flying over Shanghai",
+		Duration: 5,
 		Metadata: map[string]any{
 			"resolution":     "1080p",
 			"ratio":          "16:9",
@@ -79,7 +79,7 @@ func TestAdvancedCustomTaskAdaptorBuildsSeedancePayload(t *testing.T) {
 	require.NoError(t, common.Unmarshal(data, &payload))
 	assert.Equal(t, "seedance-2-5-260628", payload["model"])
 	assert.Equal(t, "1080p", payload["resolution"])
-	assert.Equal(t, float64(8), payload["duration"])
+	assert.Equal(t, float64(5), payload["duration"])
 	content, ok := payload["content"].([]any)
 	require.True(t, ok)
 	require.Len(t, content, 2)
